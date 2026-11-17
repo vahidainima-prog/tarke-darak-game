@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v3.9 - leg-target strike"
+const BUILD_LABEL := "v4.0 - opposite-side strike"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -258,12 +258,12 @@ func _input(event: InputEvent) -> void:
     if not defending and swing < 0.0 and recovery < 0.0:
      strike_side = 1
      feint_target = -0.60
-     say("LEFT attack selected: right hand releases during swing.")
+     say("LEFT-hand drive: right hand releases; tip crosses opposite side.")
    KEY_L:
     if not defending and swing < 0.0 and recovery < 0.0:
      strike_side = -1
      feint_target = FEINT_DEPTH_LIMIT
-     say("RIGHT attack selected: left hand releases during swing.")
+     say("RIGHT-hand drive: left hand releases; tip crosses opposite side.")
    KEY_SPACE:
     if swing < 0.0 and recovery < 0.0 and opponent_delay < 0.0:
      if defending:
@@ -291,9 +291,9 @@ func strike_ends(p: float) -> Array[Vector3]:
  var tip_x := attack_x + lerpf(1.125, tip_reach, arc)
  var tip_y := lerpf(2.57, 0.43, arc)
  # Cross the defender's guard plane on the way to the leg plane.
- var tip_z := lerpf(-0.46, 0.02, smoothstep(0.0, 1.0, t))
+ var tip_z := lerpf(-0.46, 0.02, smoothstep(0.0, 1.0, t)) + float(strike_side) * 0.38 * sin(PI * t)
  var angle := lerpf(0.0, -0.86, arc)
- var direction := Vector3(cos(angle), sin(angle), 0.0)
+ var direction := Vector3(cos(angle), sin(angle), float(strike_side) * 0.18 * sin(PI * t)).normalized()
  var tip := Vector3(tip_x, tip_y, tip_z)
  var butt := tip - direction * STICK_LENGTH
  return [butt, tip]
