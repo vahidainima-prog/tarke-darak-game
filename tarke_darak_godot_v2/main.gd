@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v3.7 - full downward arc"
+const BUILD_LABEL := "v3.8 - dance footwork"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -66,6 +66,10 @@ var impact_hold := 0.0
 var impact_message := ""
 var strike_side := 1 # 1: right-hand release, -1: left-hand release
 var release_blend := 0.0
+var attack_step_phase := 0.0
+var defend_step_phase := 0.0
+var last_attack_x := -2.7
+var last_defender_x := DEF_X
 
 func material(c: Color) -> StandardMaterial3D:
  var m := StandardMaterial3D.new()
@@ -304,6 +308,27 @@ func guard_ends() -> Array[Vector3]:
  var top := grip + (grip - bottom).normalized() * 0.55
  return [bottom, top]
 
+func animate_footwork(character: Node3D, phase: float, motion: float, swing_pose: float, facing: float) -> void:
+ # Small alternating steps and weight transfer, inspired by the paired dance.
+ # Feet return to their original local positions when movement stops.
+ var stride := minf(1.0, absf(motion) / 1.8)
+ var accent := sin(swing_pose * PI) if swing_pose > 0.0 else 0.0
+ for child in character.get_children():
+  if not child is Node3D:
+   continue
+  var n := child as Node3D
+  if n.name == "Debit trousers" or n.name == "Giveh":
+   # There are two nodes of each name; Godot auto-renames the second one.
+   pass
+  if n.name.begins_with("Debit trousers") or n.name.begins_with("Giveh"):
+   var side := -1.0 if n.position.x < 0.0 else 1.0
+   var base_x := side * 0.18 + (facing * 0.08 if n.name.begins_with("Giveh") else 0.0)
+   var step := sin(phase + (0.0 if side < 0.0 else PI))
+   n.position.x = base_x + 0.19 * stride * step + facing * 0.08 * accent
+   n.position.y = (0.12 if n.name.begins_with("Giveh") else 0.70) + 0.08 * stride * maxf(0.0, step)
+  elif n.name == "Chogha" or n.name.begins_with("Stripe"):
+   n.rotation.z = -facing * (0.035 * stride * sin(phase) + 0.10 * accent)
+
 func update_visuals() -> void:
  attacker.position.x = attack_x
  defender.position.x = defender_x
@@ -312,6 +337,8 @@ func update_visuals() -> void:
   pose = swing
  elif recovery >= 0.0:
   pose = lerpf(recovery_from, 0.0, smoothstep(0.0, 1.0, recovery))
+ animate_footwork(attacker, attack_step_phase, attack_x - last_attack_x, pose, 1.0)
+ animate_footwork(defender, defend_step_phase, defender_x - last_defender_x, 0.0, -1.0)
  var ends := strike_ends(pose)
  var a := ends[0]
  var b := ends[1]
@@ -382,6 +409,8 @@ func check_sweep(previous: float, current: float, previous_guard: Array[Vector3]
 
 func _physics_process(delta: float) -> void:
  var previous_guard := guard_ends()
+ var before_attack := attack_x
+ var before_defender := defender_x
  if swing < 0.0 and recovery < 0.0 and not defending:
   if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
    attack_x = minf(minf(MAX_X, defender_x - MIN_FIGHTER_GAP), attack_x + 2.0 * delta)
@@ -451,6 +480,14 @@ func _physics_process(delta: float) -> void:
    recovery = 0.0
    active_attack = false
    swing = -1.0
+ var attack_velocity := (attack_x - before_attack) / maxf(delta, 0.0001)
+ var defend_velocity := (defender_x - before_defender) / maxf(delta, 0.0001)
+ if absf(attack_velocity) > 0.01:
+  attack_step_phase += absf(attack_velocity) * delta * 8.0
+ if absf(defend_velocity) > 0.01:
+  defend_step_phase += absf(defend_velocity) * delta * 8.0
+ last_attack_x = attack_x - attack_velocity / 1.8
+ last_defender_x = defender_x - defend_velocity / 1.8
  update_visuals()
  header.text = BUILD_LABEL + "  |  " + ("DEFENSE TEST" if defending else "ATTACK TEST") + "  |  Hit: %d  Block: %d" % [score_hit, score_block]
  detail.text = "Distance: %.2f m   |   Darak offset: %.2f m   |   A/D: move  |  SPACE: strike" % [defender_x - attack_x, guard_shift]
