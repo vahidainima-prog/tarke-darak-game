@@ -2,6 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
+const BUILD_LABEL := "v3.6 - swing sync"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -284,11 +285,12 @@ func strike_ends(p: float) -> Array[Vector3]:
  # A full follow-through: the tip travels forward and down toward the shins.
  # Lateral depth passes through the guard plane before the leg plane.
  var angle := lerpf(0.0, -0.95, t)
- var z := lerpf(-0.46 + feint_depth * 0.25, 0.48, smoothstep(0.0, 0.72, t))
- z = lerpf(z, 0.08, smoothstep(0.72, 1.0, t))
+ var z := lerpf(-0.46 + feint_depth * 0.25, 0.38, smoothstep(0.0, 0.65, t))
+ z = lerpf(z, 0.05, smoothstep(0.65, 1.0, t))
  # The rod extends on BOTH sides of the two-handed grip, rather than
  # pointing out from a single hand. This keeps the ready pose horizontal.
- var grip_center := Vector3(attack_x + 0.05 + 1.10 * t, 2.57 - 1.02 * t, z)
+ # The holding hand drives the rod forward; the tip drops to shin height.
+ var grip_center := Vector3(attack_x + 0.05 + 1.28 * t, 2.57 - 1.15 * t, z)
  var direction := Vector3(cos(angle), sin(angle), 0.0)
  var butt := grip_center - direction * (STICK_LENGTH * 0.5)
  var tip := grip_center + direction * (STICK_LENGTH * 0.5)
@@ -449,5 +451,5 @@ func _physics_process(delta: float) -> void:
    active_attack = false
    swing = -1.0
  update_visuals()
- header.text = ("DEFENSE TEST" if defending else "ATTACK TEST") + "   |   Hit: %d   Block: %d" % [score_hit, score_block]
- detail.text = "Distance: %.2f m   |   Darak offset: %.2f m   |   Defense A/D: move" % [defender_x - attack_x, guard_shift]
+ header.text = BUILD_LABEL + "  |  " + ("DEFENSE TEST" if defending else "ATTACK TEST") + "  |  Hit: %d  Block: %d" % [score_hit, score_block]
+ detail.text = "Distance: %.2f m   |   Darak offset: %.2f m   |   A/D: move  |  SPACE: strike" % [defender_x - attack_x, guard_shift]
