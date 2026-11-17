@@ -63,6 +63,8 @@ var active_attack := false
 var swing_speed := 0.0
 var impact_hold := 0.0
 var impact_message := ""
+var strike_side := 1 # 1: right-hand release, -1: left-hand release
+var release_blend := 0.0
 
 func material(c: Color) -> StandardMaterial3D:
  var m := StandardMaterial3D.new()
@@ -103,8 +105,8 @@ func place_rod(n: MeshInstance3D, a: Vector3, b: Vector3) -> void:
 func place_two_bone_arm(upper: MeshInstance3D, lower: MeshInstance3D, elbow_mesh: MeshInstance3D, shoulder: Vector3, hand: Vector3, elbow_hint: Vector3) -> void:
  # Analytic two-bone IK: law of cosines with a consistent elbow bend plane.
  # The hand remains locked to the grip; the elbow is solved, not drawn as a straight stick.
- var upper_len := 0.67
- var lower_len := 0.67
+ var upper_len := 0.90
+ var lower_len := 0.90
  var to_hand := hand - shoulder
  var distance := maxf(to_hand.length(), 0.001)
  var forward := to_hand / distance
@@ -199,7 +201,7 @@ func _ready() -> void:
  detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
  column.add_child(detail)
  var footer := Label.new()
- footer.text = "A/D or arrows: move selected fighter | TAB: switch | W/S: darak | J/L: feint | SPACE: swing | R: reset"
+ footer.text = "A/D: move | TAB: switch | W/S: darak | J: left strike | L: right strike | SPACE: swing | R: reset"
  footer.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
  footer.offset_top = -43
  footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -249,12 +251,14 @@ func _input(event: InputEvent) -> void:
     say("Reset. Move closer before striking.")
    KEY_J:
     if not defending and swing < 0.0 and recovery < 0.0:
+     strike_side = 1
      feint_target = -0.60
-     say("Feint BEHIND the attacker (far side of body).")
+     say("LEFT attack selected: right hand releases during swing.")
    KEY_L:
     if not defending and swing < 0.0 and recovery < 0.0:
+     strike_side = -1
      feint_target = FEINT_DEPTH_LIMIT
-     say("Feint IN FRONT of the attacker (near camera).")
+     say("RIGHT attack selected: left hand releases during swing.")
    KEY_SPACE:
     if swing < 0.0 and recovery < 0.0 and opponent_delay < 0.0:
      if defending:
@@ -277,14 +281,15 @@ func strike_ends(p: float) -> Array[Vector3]:
  # Acceleration and deceleration make the swing read as a weighted wooden rod.
  var t := clampf(p, 0.0, 1.0)
  # Phase is integrated with angular acceleration and braking, not eased by time.
- var angle := lerpf(0.22, -1.27, t)
- var z := lerpf(feint_depth, 0.19, t)
+ var angle := lerpf(0.0, -1.27, t)
+ # Raised ready position is behind the head; the rod travels forward on strike.
+ var z := lerpf(-0.46 + feint_depth * 0.25, 0.19, t)
  # The rod extends on BOTH sides of the two-handed grip, rather than
  # pointing out from a single hand. This keeps the ready pose horizontal.
- var grip_center := Vector3(attack_x + 0.43 + 0.10 * t, 2.49 - 0.17 * t, z)
+ var grip_center := Vector3(attack_x + 0.05 + 0.48 * t, 2.57 - 0.24 * t, z)
  var direction := Vector3(cos(angle), sin(angle), 0.0)
- var butt := grip_center - direction * 0.48
- var tip := grip_center + direction * (STICK_LENGTH - 0.48)
+ var butt := grip_center - direction * (STICK_LENGTH * 0.5)
+ var tip := grip_center + direction * (STICK_LENGTH * 0.5)
  return [butt, tip]
 
 func guard_ends() -> Array[Vector3]:
@@ -306,15 +311,26 @@ func update_visuals() -> void:
  var ends := strike_ends(pose)
  var a := ends[0]
  var b := ends[1]
- if swing < 0.0 and recovery < 0.0:
-  a.z = feint_depth
-  b.z = feint_depth
+ # Ready pose uses the same 3D endpoints as the strike and collision.
  place_rod(terkeh, a, b)
  # Two visible hands remain around the wooden grip and move together with it.
  var direction := (b - a).normalized()
- # Both hands surround the center grip; visible wooden ends remain on either side.
- attack_hand_a.position = a + direction * 0.31
- attack_hand_b.position = a + direction * 0.65
+ # In ready stance both hands hold near opposite ends of the horizontal rod.
+ # During the swing the selected hand releases and returns toward the torso.
+ var releasing := swing >= 0.0 or recovery >= 0.0
+ var phase := swing if swing >= 0.0 else (recovery_from if recovery >= 0.0 else 0.0)
+ var release_target := 0.0
+ if releasing:
+  release_target = smoothstep(0.05, 0.34, phase)
+ if recovery >= 0.0:
+  release_target *= 1.0 - smoothstep(0.20, 0.95, recovery)
+ release_blend = release_target
+ var left_grip := a + direction * 0.12
+ var right_grip := b - direction * 0.12
+ var left_rest := Vector3(attack_x - 0.30, 1.86, 0.25)
+ var right_rest := Vector3(attack_x + 0.33, 1.88, 0.25)
+ attack_hand_a.position = left_grip.lerp(left_rest, release_blend if strike_side < 0 else 0.0)
+ attack_hand_b.position = right_grip.lerp(right_rest, release_blend if strike_side > 0 else 0.0)
  place_two_bone_arm(attack_arm_a, attack_forearm_a, attack_elbow_a, Vector3(attack_x + 0.20, 1.92, -0.14), attack_hand_a.position, Vector3(-0.6, 0.1, -0.7))
  place_two_bone_arm(attack_arm_b, attack_forearm_b, attack_elbow_b, Vector3(attack_x + 0.20, 1.92, 0.16), attack_hand_b.position, Vector3(-0.6, 0.1, 0.7))
  var g := guard_ends()
