@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v4.2 - waist joint"
+const BUILD_LABEL := "v4.3 - distinct left right"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -293,12 +293,14 @@ func strike_ends(p: float) -> Array[Vector3]:
  var arc := smoothstep(0.0, 1.0, t)
  var distance := defender_x - attack_x
  var tip_reach := minf(2.02, distance - 0.18)
- var tip_x := attack_x + lerpf(1.125, tip_reach, arc)
+ # Opposite-hand strikes target different legs rather than the same centerline.
+ var leg_offset := -0.18 if strike_side > 0 else 0.18
+ var tip_x := attack_x + lerpf(1.125 + 0.14 * float(strike_side), tip_reach + leg_offset, arc)
  var tip_y := lerpf(2.57, 0.43, arc)
  # Cross the defender's guard plane on the way to the leg plane.
- var tip_z := lerpf(-0.46, 0.02, smoothstep(0.0, 1.0, t)) + float(strike_side) * 0.38 * sin(PI * t)
- var angle := lerpf(0.0, -0.86, arc)
- var direction := Vector3(cos(angle), sin(angle), float(strike_side) * 0.18 * sin(PI * t)).normalized()
+ var tip_z := lerpf(-0.46 + float(strike_side) * 0.42, 0.02, arc) + float(strike_side) * 0.48 * sin(PI * t)
+ var angle := lerpf(0.0, -0.86 + float(strike_side) * 0.22, arc)
+ var direction := Vector3(cos(angle), sin(angle), float(strike_side) * 0.46 * sin(PI * t)).normalized()
  var tip := Vector3(tip_x, tip_y, tip_z)
  var butt := tip - direction * STICK_LENGTH
  return [butt, tip]
@@ -366,8 +368,8 @@ func update_visuals() -> void:
  if recovery >= 0.0:
   release_target *= 1.0 - smoothstep(0.20, 0.95, recovery)
  release_blend = release_target
- var left_grip := a + direction * 0.14
- var right_grip := a + direction * lerpf(1.93, 0.55, smoothstep(0.0, 0.35, pose))
+ var left_grip := a + direction * (0.14 if strike_side < 0 else 0.52)
+ var right_grip := a + direction * (0.52 if strike_side < 0 else 1.93)
  var left_rest := Vector3(attack_x - 0.30, 1.86, 0.25)
  var right_rest := Vector3(attack_x + 0.33, 1.88, 0.25)
  attack_hand_a.position = left_grip.lerp(left_rest, release_blend if strike_side < 0 else 0.0)
@@ -500,4 +502,4 @@ func _physics_process(delta: float) -> void:
  last_defender_x = defender_x - defend_velocity / 1.8
  update_visuals()
  header.text = BUILD_LABEL + "  |  " + ("DEFENSE TEST" if defending else "ATTACK TEST") + "  |  Hit: %d  Block: %d" % [score_hit, score_block]
- detail.text = "Distance: %.2f m   |   Darak offset: %.2f m   |   A/D: move  |  SPACE: strike" % [defender_x - attack_x, guard_shift]
+ detail.text = "Target: %s leg  |  Distance: %.2f m  |  Darak offset: %.2f m  |  J/L: switch side" % [("near" if strike_side > 0 else "far"), defender_x - attack_x, guard_shift]
