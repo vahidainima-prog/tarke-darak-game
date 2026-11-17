@@ -46,6 +46,14 @@ var attack_arm_a: MeshInstance3D
 var attack_arm_b: MeshInstance3D
 var defend_arm: MeshInstance3D
 var defend_arm_b: MeshInstance3D
+var attack_forearm_a: MeshInstance3D
+var attack_forearm_b: MeshInstance3D
+var defend_forearm_a: MeshInstance3D
+var defend_forearm_b: MeshInstance3D
+var attack_elbow_a: MeshInstance3D
+var attack_elbow_b: MeshInstance3D
+var defend_elbow_a: MeshInstance3D
+var defend_elbow_b: MeshInstance3D
 var last_outcome := ""
 var active_attack := false
 var swing_speed := 0.0
@@ -87,6 +95,26 @@ func place_rod(n: MeshInstance3D, a: Vector3, b: Vector3) -> void:
  if v.length() > 0.001:
   n.quaternion = Quaternion(Vector3.UP, v.normalized())
  (n.mesh as CylinderMesh).height = maxf(v.length(), 0.01)
+
+func place_two_bone_arm(upper: MeshInstance3D, lower: MeshInstance3D, elbow_mesh: MeshInstance3D, shoulder: Vector3, hand: Vector3, elbow_hint: Vector3) -> void:
+ # Analytic two-bone IK: law of cosines with a consistent elbow bend plane.
+ # The hand remains locked to the grip; the elbow is solved, not drawn as a straight stick.
+ var upper_len := 0.67
+ var lower_len := 0.67
+ var to_hand := hand - shoulder
+ var distance := maxf(to_hand.length(), 0.001)
+ var forward := to_hand / distance
+ var bend := elbow_hint - forward * elbow_hint.dot(forward)
+ if bend.length_squared() < 0.0001:
+  bend = Vector3.FORWARD - forward * Vector3.FORWARD.dot(forward)
+ bend = bend.normalized()
+ var reach := minf(distance, upper_len + lower_len - 0.002)
+ var along := (reach * reach + upper_len * upper_len - lower_len * lower_len) / (2.0 * reach)
+ var height := sqrt(maxf(0.0, upper_len * upper_len - along * along))
+ var elbow := shoulder + forward * along + bend * height
+ place_rod(upper, shoulder, elbow)
+ place_rod(lower, elbow, hand)
+ elbow_mesh.position = elbow
 
 func person(name: String, x: float, face_right: bool) -> Node3D:
  var root := Node3D.new()
@@ -133,6 +161,14 @@ func _ready() -> void:
  attack_arm_b = rod(self, "Attacker arm right", 0.095, Color(0.66, 0.44, 0.30))
  defend_arm = rod(self, "Defender arm", 0.11, Color(0.66, 0.44, 0.30))
  defend_arm_b = rod(self, "Defender second arm", 0.11, Color(0.66, 0.44, 0.30))
+ attack_forearm_a = rod(self, "Attacker forearm near", 0.085, Color(0.66, 0.44, 0.30))
+ attack_forearm_b = rod(self, "Attacker forearm far", 0.085, Color(0.66, 0.44, 0.30))
+ defend_forearm_a = rod(self, "Defender forearm near", 0.095, Color(0.66, 0.44, 0.30))
+ defend_forearm_b = rod(self, "Defender forearm far", 0.095, Color(0.66, 0.44, 0.30))
+ attack_elbow_a = block(self, "Attacker elbow near", Vector3(0.16, 0.16, 0.16), Vector3.ZERO, Color(0.66, 0.44, 0.30))
+ attack_elbow_b = block(self, "Attacker elbow far", Vector3(0.16, 0.16, 0.16), Vector3.ZERO, Color(0.66, 0.44, 0.30))
+ defend_elbow_a = block(self, "Defender elbow near", Vector3(0.17, 0.17, 0.17), Vector3.ZERO, Color(0.66, 0.44, 0.30))
+ defend_elbow_b = block(self, "Defender elbow far", Vector3(0.17, 0.17, 0.17), Vector3.ZERO, Color(0.66, 0.44, 0.30))
  var cam := Camera3D.new()
  add_child(cam)
  cam.position = Vector3(0, 2.45, 12.5)
@@ -266,14 +302,14 @@ func update_visuals() -> void:
  var direction := (b - a).normalized()
  attack_hand_a.position = a + direction * 0.10
  attack_hand_b.position = a + direction * 0.35
- place_rod(attack_arm_a, Vector3(attack_x + 0.20, 1.91, -0.13), attack_hand_a.position)
- place_rod(attack_arm_b, Vector3(attack_x + 0.24, 1.91, 0.16), attack_hand_b.position)
+ place_two_bone_arm(attack_arm_a, attack_forearm_a, attack_elbow_a, Vector3(attack_x + 0.20, 1.92, -0.14), attack_hand_a.position, Vector3(-0.6, 0.1, -0.7))
+ place_two_bone_arm(attack_arm_b, attack_forearm_b, attack_elbow_b, Vector3(attack_x + 0.20, 1.92, 0.16), attack_hand_b.position, Vector3(-0.6, 0.1, 0.7))
  var g := guard_ends()
  place_rod(darak, g[0], g[1])
  defend_hand.position = g[0].lerp(g[1], 0.70)
  defend_hand_b.position = g[0].lerp(g[1], 0.48)
- place_rod(defend_arm, Vector3(DEF_X - 0.20, 1.91, -0.13), defend_hand.position)
- place_rod(defend_arm_b, Vector3(DEF_X - 0.20, 1.91, 0.16), defend_hand_b.position)
+ place_two_bone_arm(defend_arm, defend_forearm_a, defend_elbow_a, Vector3(DEF_X - 0.20, 1.91, -0.13), defend_hand.position, Vector3(0.65, -0.15, -0.7))
+ place_two_bone_arm(defend_arm_b, defend_forearm_b, defend_elbow_b, Vector3(DEF_X - 0.20, 1.91, 0.16), defend_hand_b.position, Vector3(0.65, -0.15, 0.7))
 
 func segment_distance(a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> float:
  var u := b - a
