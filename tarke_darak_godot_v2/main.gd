@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v3.6 - swing sync"
+const BUILD_LABEL := "v3.7 - full downward arc"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -10,7 +10,7 @@ const MIN_FIGHTER_GAP := 1.12
 const DEFENDER_MIN_X := 0.65
 const DEFENDER_MAX_X := 3.35
 const SWING_SECONDS := 0.82
-const RECOVERY_SECONDS := 0.32
+const RECOVERY_SECONDS := 0.48
 const MAX_SWEEP_STEP := 0.025
 const FEINT_DEPTH_LIMIT := 0.60
 const SWING_ACCEL := 10.0 # normalized phase acceleration / s^2
@@ -284,13 +284,13 @@ func strike_ends(p: float) -> Array[Vector3]:
  # Phase is integrated with angular acceleration and braking, not eased by time.
  # A full follow-through: the tip travels forward and down toward the shins.
  # Lateral depth passes through the guard plane before the leg plane.
- var angle := lerpf(0.0, -0.95, t)
+ var angle := lerpf(0.0, -1.35, smoothstep(0.0, 1.0, t))
  var z := lerpf(-0.46 + feint_depth * 0.25, 0.38, smoothstep(0.0, 0.65, t))
  z = lerpf(z, 0.05, smoothstep(0.65, 1.0, t))
  # The rod extends on BOTH sides of the two-handed grip, rather than
  # pointing out from a single hand. This keeps the ready pose horizontal.
  # The holding hand drives the rod forward; the tip drops to shin height.
- var grip_center := Vector3(attack_x + 0.05 + 1.28 * t, 2.57 - 1.15 * t, z)
+ var grip_center := Vector3(attack_x + 0.05 + 1.27 * t, 2.57 - 1.26 * t, z)
  var direction := Vector3(cos(angle), sin(angle), 0.0)
  var butt := grip_center - direction * (STICK_LENGTH * 0.5)
  var tip := grip_center + direction * (STICK_LENGTH * 0.5)
@@ -428,7 +428,7 @@ func _physics_process(delta: float) -> void:
   if result == "block":
    score_block += 100
    say("BLOCK: terkeh touched the held darak! Defender +100")
-   impact_hold = 0.11
+   impact_hold = 0.22
    swing_speed = 0.0
    recovery_from = swing
    recovery = 0.0
@@ -437,14 +437,15 @@ func _physics_process(delta: float) -> void:
   elif result == "leg":
    score_hit += 100
    say("LEGAL CONTACT: terkeh reached below-knee target. Attacker +100")
-   impact_hold = 0.07
+   impact_hold = 0.19
    swing_speed = 0.0
    recovery_from = swing
    recovery = 0.0
    active_attack = false
    swing = -1.0
   elif swing >= 1.0:
-   say("MISS: tip completed its arc without touching guard or legal leg.")
+   say("MISS: full downward arc completed; move closer to reach the leg.")
+   impact_hold = 0.16
    swing_speed = 0.0
    recovery_from = 1.0
    recovery = 0.0
