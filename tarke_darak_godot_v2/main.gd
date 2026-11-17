@@ -38,9 +38,11 @@ var detail: Label
 var attack_hand_a: MeshInstance3D
 var attack_hand_b: MeshInstance3D
 var defend_hand: MeshInstance3D
+var defend_hand_b: MeshInstance3D
 var attack_arm_a: MeshInstance3D
 var attack_arm_b: MeshInstance3D
 var defend_arm: MeshInstance3D
+var defend_arm_b: MeshInstance3D
 var last_outcome := ""
 var active_attack := false
 
@@ -119,10 +121,12 @@ func _ready() -> void:
  darak = rod(self, "Darak held in defender hand", GUARD_RADIUS, Color(0.27, 0.14, 0.07))
  attack_hand_a = block(self, "Attacker left hand", Vector3(0.19, 0.17, 0.17), Vector3.ZERO, Color(0.67, 0.44, 0.29))
  attack_hand_b = block(self, "Attacker right hand", Vector3(0.19, 0.17, 0.17), Vector3.ZERO, Color(0.67, 0.44, 0.29))
- defend_hand = block(self, "Defender gripping darak", Vector3(0.22, 0.20, 0.22), Vector3.ZERO, Color(0.67, 0.44, 0.29))
+ defend_hand = block(self, "Defender upper grip", Vector3(0.22, 0.20, 0.22), Vector3.ZERO, Color(0.67, 0.44, 0.29))
+ defend_hand_b = block(self, "Defender lower grip", Vector3(0.22, 0.20, 0.22), Vector3.ZERO, Color(0.67, 0.44, 0.29))
  attack_arm_a = rod(self, "Attacker arm left", 0.095, Color(0.66, 0.44, 0.30))
  attack_arm_b = rod(self, "Attacker arm right", 0.095, Color(0.66, 0.44, 0.30))
  defend_arm = rod(self, "Defender arm", 0.11, Color(0.66, 0.44, 0.30))
+ defend_arm_b = rod(self, "Defender second arm", 0.11, Color(0.66, 0.44, 0.30))
  var cam := Camera3D.new()
  add_child(cam)
  cam.position = Vector3(0, 2.45, 12.5)
@@ -184,7 +188,9 @@ func _input(event: InputEvent) -> void:
     active_attack = false
     opponent_delay = -1.0
     guard_shift = 0.0
+    guard_velocity = 0.0
     guard_target = 0.0
+    feint_depth = 0.0
     feint_target = 0.0
     score_hit = 0
     score_block = 0
@@ -194,8 +200,8 @@ func _input(event: InputEvent) -> void:
      feint_target = -0.60
      say("Feint BEHIND the attacker (far side of body).")
    KEY_L:
-    if not defending and swing < 0.0:
-     feint_target = 0.65
+    if not defending and swing < 0.0 and recovery < 0.0:
+     feint_target = FEINT_DEPTH_LIMIT
      say("Feint IN FRONT of the attacker (near camera).")
    KEY_SPACE:
     if swing < 0.0 and recovery < 0.0 and opponent_delay < 0.0:
@@ -253,8 +259,10 @@ func update_visuals() -> void:
  place_rod(attack_arm_b, Vector3(attack_x + 0.24, 1.91, 0.16), attack_hand_b.position)
  var g := guard_ends()
  place_rod(darak, g[0], g[1])
- defend_hand.position = Vector3(DEF_X - 0.36, 1.37, 0.28)
- place_rod(defend_arm, Vector3(DEF_X - 0.20, 1.91, 0.10), defend_hand.position)
+ defend_hand.position = g[0].lerp(g[1], 0.70)
+ defend_hand_b.position = g[0].lerp(g[1], 0.48)
+ place_rod(defend_arm, Vector3(DEF_X - 0.20, 1.91, -0.13), defend_hand.position)
+ place_rod(defend_arm_b, Vector3(DEF_X - 0.20, 1.91, 0.16), defend_hand_b.position)
 
 func segment_distance(a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> float:
  var u := b - a
@@ -274,14 +282,16 @@ func segment_distance(a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> float:
  s = clampf((bb * t - dd) / maxf(aa, 0.00001), 0.0, 1.0)
  return (w + u * s - v * t).length()
 
-func check_sweep(previous: float, current: float) -> String:
- var g := guard_ends()
+func check_sweep(previous: float, current: float, previous_guard: Array[Vector3], current_guard: Array[Vector3]) -> String:
  # Adaptive swept collision: never skip a thin staff on a slow frame.
  var steps := maxi(1, ceili((current - previous) / MAX_SWEEP_STEP))
  for i in range(1, steps + 1):
   var p := lerpf(previous, current, float(i) / float(steps))
   var s := strike_ends(p)
-  if segment_distance(s[0], s[1], g[0], g[1]) <= STICK_RADIUS + GUARD_RADIUS + 0.055:
+  var alpha := float(i) / float(steps)
+  var guard_a := previous_guard[0].lerp(current_guard[0], alpha)
+  var guard_b := previous_guard[1].lerp(current_guard[1], alpha)
+  if segment_distance(s[0], s[1], guard_a, guard_b) <= STICK_RADIUS + GUARD_RADIUS + 0.025:
    return "block"
   for foot_x in [DEF_X - 0.18, DEF_X + 0.18]:
    var leg_a := Vector3(foot_x, 0.12, 0.0)
@@ -290,7 +300,8 @@ func check_sweep(previous: float, current: float) -> String:
     return "leg"
  return ""
 
-func _process(delta: float) -> void:
+func _physics_process(delta: float) -> void:
+ var previous_guard := guard_ends()
  if swing < 0.0 and recovery < 0.0 and not defending:
   if Input.is_key_pressed(KEY_D):
    attack_x = minf(MAX_X, attack_x + 2.0 * delta)
@@ -302,10 +313,13 @@ func _process(delta: float) -> void:
   if Input.is_key_pressed(KEY_S):
    guard_target = maxf(-0.53, guard_target - delta * 1.65)
   # Critically damped hand-guided guard: the staff follows, never detaches.
-  var stiffness := 48.0
-  var damping := 2.0 * sqrt(stiffness)
-  guard_velocity += (stiffness * (guard_target - guard_shift) - damping * guard_velocity) * delta
-  guard_shift = clampf(guard_shift + guard_velocity * delta, -0.53, 0.53)
+  var omega := 9.0
+  # Exact critically damped spring step for constant target; stable across frame rates.
+  var error := guard_shift - guard_target
+  var decay := exp(-omega * delta)
+  var temp := (guard_velocity + omega * error) * delta
+  guard_shift = clampf(guard_target + (error + temp) * decay, -0.53, 0.53)
+  guard_velocity = (guard_velocity - omega * temp) * decay
   if opponent_delay >= 0.0:
    opponent_delay -= delta
    if opponent_delay < 0.0:
@@ -318,7 +332,7 @@ func _process(delta: float) -> void:
  if swing >= 0.0:
   var old := swing
   swing = minf(1.0, swing + delta / SWING_SECONDS)
-  var result := check_sweep(old, swing)
+  var result := check_sweep(old, swing, previous_guard, guard_ends())
   if result == "block":
    score_block += 100
    say("BLOCK: terkeh touched the held darak! Defender +100")
