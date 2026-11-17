@@ -5,6 +5,9 @@ extends Node3D
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
+const MIN_FIGHTER_GAP := 1.12
+const DEFENDER_MIN_X := 0.65
+const DEFENDER_MAX_X := 3.35
 const SWING_SECONDS := 0.82
 const RECOVERY_SECONDS := 0.32
 const MAX_SWEEP_STEP := 0.025
@@ -21,6 +24,7 @@ var defender: Node3D
 var terkeh: MeshInstance3D
 var darak: MeshInstance3D
 var attack_x := -2.7
+var defender_x := DEF_X
 var swing := -1.0
 var swing_finished := false
 var recovery := -1.0
@@ -150,7 +154,7 @@ func _ready() -> void:
  add_child(light)
  block(self, "Ground", Vector3(17, 0.12, 7), Vector3(0, -0.08, 0), Color(0.32, 0.51, 0.28))
  attacker = person("Attacker facing RIGHT", attack_x, true)
- defender = person("Defender facing LEFT", DEF_X, false)
+ defender = person("Defender facing LEFT", defender_x, false)
  terkeh = rod(self, "Terkeh attached to raised hands", STICK_RADIUS, Color(0.93, 0.61, 0.20))
  darak = rod(self, "Darak held in defender hand", GUARD_RADIUS, Color(0.27, 0.14, 0.07))
  attack_hand_a = block(self, "Attacker left hand", Vector3(0.19, 0.17, 0.17), Vector3.ZERO, Color(0.67, 0.44, 0.29))
@@ -195,7 +199,7 @@ func _ready() -> void:
  detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
  column.add_child(detail)
  var footer := Label.new()
- footer.text = "A / D: move   |   J: behind-body feint   L: front-body feint   |   SPACE: swing   |   TAB: defend   |   W / S: move darak   |   R: reset"
+ footer.text = "A / D: move active fighter   |   J/L: feint   |   SPACE: swing   |   TAB: defend   |   W/S: darak   |   R: reset"
  footer.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
  footer.offset_top = -43
  footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -219,14 +223,16 @@ func _input(event: InputEvent) -> void:
     swing_speed = 0.0
     impact_hold = 0.0
     opponent_delay = -1.0
-    attack_x = -0.2 if defending else -2.7
+    attack_x = -1.7 if defending else -2.7
+    defender_x = DEF_X
     guard_shift = 0.0
     guard_velocity = 0.0
     guard_target = 0.0
-    say("DEFENSE: SPACE starts opponent; W/S move darak while it stays in hand." if defending else "ATTACK: approach with D, feint J/L, swing SPACE.")
+    say("DEFENSE: A/D move defender; W/S steer darak; SPACE starts opponent." if defending else "ATTACK: A/D move; J/L feint; SPACE swing.")
    KEY_R:
     defending = false
     attack_x = -2.7
+    defender_x = DEF_X
     swing = -1.0
     recovery = -1.0
     active_attack = false
@@ -279,13 +285,15 @@ func strike_ends(p: float) -> Array[Vector3]:
 
 func guard_ends() -> Array[Vector3]:
  # One grip always follows the defender's hand. The lower end pivots across the shins.
- var grip := Vector3(DEF_X - 0.36, 1.37, 0.28)
- var bottom := Vector3(DEF_X - 0.52 + guard_shift, 0.10, 0.28)
+ # Guard is held slightly ahead of the defender (toward the attacker) and camera.
+ var grip := Vector3(defender_x - 0.48, 1.39, 0.48)
+ var bottom := Vector3(defender_x - 0.69 + guard_shift, 0.10, 0.48)
  var top := grip + (grip - bottom).normalized() * 0.55
  return [bottom, top]
 
 func update_visuals() -> void:
  attacker.position.x = attack_x
+ defender.position.x = defender_x
  var pose := 0.0
  if swing >= 0.0:
   pose = swing
@@ -308,8 +316,8 @@ func update_visuals() -> void:
  place_rod(darak, g[0], g[1])
  defend_hand.position = g[0].lerp(g[1], 0.70)
  defend_hand_b.position = g[0].lerp(g[1], 0.48)
- place_two_bone_arm(defend_arm, defend_forearm_a, defend_elbow_a, Vector3(DEF_X - 0.20, 1.91, -0.13), defend_hand.position, Vector3(0.65, -0.15, -0.7))
- place_two_bone_arm(defend_arm_b, defend_forearm_b, defend_elbow_b, Vector3(DEF_X - 0.20, 1.91, 0.16), defend_hand_b.position, Vector3(0.65, -0.15, 0.7))
+ place_two_bone_arm(defend_arm, defend_forearm_a, defend_elbow_a, Vector3(defender_x - 0.20, 1.91, 0.12), defend_hand.position, Vector3(0.65, -0.15, -0.7))
+ place_two_bone_arm(defend_arm_b, defend_forearm_b, defend_elbow_b, Vector3(defender_x - 0.20, 1.91, 0.36), defend_hand_b.position, Vector3(0.65, -0.15, 0.7))
 
 func segment_distance(a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> float:
  var u := b - a
@@ -340,7 +348,7 @@ func check_sweep(previous: float, current: float, previous_guard: Array[Vector3]
   var guard_b := previous_guard[1].lerp(current_guard[1], alpha)
   if segment_distance(s[0], s[1], guard_a, guard_b) <= STICK_RADIUS + GUARD_RADIUS + 0.025:
    return "block"
-  for foot_x in [DEF_X - 0.18, DEF_X + 0.18]:
+  for foot_x in [defender_x - 0.18, defender_x + 0.18]:
    var leg_a := Vector3(foot_x, 0.12, 0.0)
    var leg_b := Vector3(foot_x, 0.77, 0.0)
    if segment_distance(s[0], s[1], leg_a, leg_b) <= 0.20:
@@ -351,10 +359,15 @@ func _physics_process(delta: float) -> void:
  var previous_guard := guard_ends()
  if swing < 0.0 and recovery < 0.0 and not defending:
   if Input.is_key_pressed(KEY_D):
-   attack_x = minf(MAX_X, attack_x + 2.0 * delta)
+   attack_x = minf(minf(MAX_X, defender_x - MIN_FIGHTER_GAP), attack_x + 2.0 * delta)
   if Input.is_key_pressed(KEY_A):
    attack_x = maxf(MIN_X, attack_x - 2.0 * delta)
  if defending:
+  # In defense mode A/D move the defender; never allow bodies to overlap.
+  if Input.is_key_pressed(KEY_A):
+   defender_x = maxf(maxf(DEFENDER_MIN_X, attack_x + MIN_FIGHTER_GAP), defender_x - 1.8 * delta)
+  if Input.is_key_pressed(KEY_D):
+   defender_x = minf(DEFENDER_MAX_X, defender_x + 1.8 * delta)
   if Input.is_key_pressed(KEY_W):
    guard_target = minf(0.53, guard_target + delta * 1.65)
   if Input.is_key_pressed(KEY_S):
@@ -413,4 +426,4 @@ func _physics_process(delta: float) -> void:
    swing = -1.0
  update_visuals()
  header.text = ("DEFENSE TEST" if defending else "ATTACK TEST") + "   |   Hit: %d   Block: %d" % [score_hit, score_block]
- detail.text = "Distance: %.2f m   |   Darak offset: %.2f m   |   J=back / L=front" % [DEF_X - attack_x, guard_shift]
+ detail.text = "Distance: %.2f m   |   Darak offset: %.2f m   |   Defense A/D: move" % [defender_x - attack_x, guard_shift]
