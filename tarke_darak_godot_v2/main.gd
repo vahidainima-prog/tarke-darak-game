@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v4.0 - opposite-side strike"
+const BUILD_LABEL := "v4.1 - bending strike"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -311,6 +311,8 @@ func animate_footwork(character: Node3D, phase: float, motion: float, swing_pose
  # Feet return to their original local positions when movement stops.
  var stride := minf(1.0, absf(motion) / 1.8)
  var accent := sin(swing_pose * PI) if swing_pose > 0.0 else 0.0
+ var bend := smoothstep(0.12, 0.82, swing_pose) if facing > 0.0 else 0.0
+ var lean := 0.36 * bend
  for child in character.get_children():
   if not child is Node3D:
    continue
@@ -325,7 +327,15 @@ func animate_footwork(character: Node3D, phase: float, motion: float, swing_pose
    n.position.x = base_x + 0.19 * stride * step + facing * 0.08 * accent
    n.position.y = (0.12 if n.name.begins_with("Giveh") else 0.70) + 0.08 * stride * maxf(0.0, step)
   elif n.name == "Chogha" or n.name.begins_with("Stripe"):
-   n.rotation.z = -facing * (0.035 * stride * sin(phase) + 0.10 * accent)
+   n.rotation.z = -facing * (0.035 * stride * sin(phase) + 0.10 * accent + lean)
+   n.position.x = (0.0 if n.name == "Chogha" else n.position.x)
+   n.position.y = 1.57 - 0.25 * bend
+  elif n.name == "Head" or n.name == "Hat" or n.name == "Nose-facing":
+   var head_x := 0.22 if n.name == "Nose-facing" else 0.0
+   var head_y := 2.27 if n.name == "Nose-facing" else (2.54 if n.name == "Hat" else 2.26)
+   n.position.x = head_x + facing * 0.34 * bend
+   n.position.y = head_y - 0.48 * bend
+   n.rotation.z = -facing * 0.23 * bend
 
 func update_visuals() -> void:
  attacker.position.x = attack_x
@@ -337,6 +347,8 @@ func update_visuals() -> void:
   pose = lerpf(recovery_from, 0.0, smoothstep(0.0, 1.0, recovery))
  animate_footwork(attacker, attack_step_phase, attack_x - last_attack_x, pose, 1.0)
  animate_footwork(defender, defend_step_phase, defender_x - last_defender_x, 0.0, -1.0)
+ var bend_amount := smoothstep(0.12, 0.82, pose)
+ var shoulder_shift := Vector3(0.31 * bend_amount, -0.42 * bend_amount, 0.0)
  var ends := strike_ends(pose)
  var a := ends[0]
  var b := ends[1]
@@ -360,8 +372,8 @@ func update_visuals() -> void:
  var right_rest := Vector3(attack_x + 0.33, 1.88, 0.25)
  attack_hand_a.position = left_grip.lerp(left_rest, release_blend if strike_side < 0 else 0.0)
  attack_hand_b.position = right_grip.lerp(right_rest, release_blend if strike_side > 0 else 0.0)
- place_two_bone_arm(attack_arm_a, attack_forearm_a, attack_elbow_a, Vector3(attack_x + 0.20, 1.92, -0.14), attack_hand_a.position, Vector3(-0.6, 0.1, -0.7))
- place_two_bone_arm(attack_arm_b, attack_forearm_b, attack_elbow_b, Vector3(attack_x + 0.20, 1.92, 0.16), attack_hand_b.position, Vector3(-0.6, 0.1, 0.7))
+ place_two_bone_arm(attack_arm_a, attack_forearm_a, attack_elbow_a, Vector3(attack_x + 0.20, 1.92, -0.14) + shoulder_shift, attack_hand_a.position, Vector3(-0.6, 0.1, -0.7))
+ place_two_bone_arm(attack_arm_b, attack_forearm_b, attack_elbow_b, Vector3(attack_x + 0.20, 1.92, 0.16) + shoulder_shift, attack_hand_b.position, Vector3(-0.6, 0.1, 0.7))
  var g := guard_ends()
  place_rod(darak, g[0], g[1])
  defend_hand.position = g[0].lerp(g[1], 0.70)
