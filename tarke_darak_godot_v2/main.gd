@@ -281,12 +281,14 @@ func strike_ends(p: float) -> Array[Vector3]:
  # Acceleration and deceleration make the swing read as a weighted wooden rod.
  var t := clampf(p, 0.0, 1.0)
  # Phase is integrated with angular acceleration and braking, not eased by time.
- var angle := lerpf(0.0, -1.27, t)
- # Raised ready position is behind the head; the rod travels forward on strike.
- var z := lerpf(-0.46 + feint_depth * 0.25, 0.19, t)
+ # A full follow-through: the tip travels forward and down toward the shins.
+ # Lateral depth passes through the guard plane before the leg plane.
+ var angle := lerpf(0.0, -0.95, t)
+ var z := lerpf(-0.46 + feint_depth * 0.25, 0.48, smoothstep(0.0, 0.72, t))
+ z = lerpf(z, 0.08, smoothstep(0.72, 1.0, t))
  # The rod extends on BOTH sides of the two-handed grip, rather than
  # pointing out from a single hand. This keeps the ready pose horizontal.
- var grip_center := Vector3(attack_x + 0.05 + 0.48 * t, 2.57 - 0.24 * t, z)
+ var grip_center := Vector3(attack_x + 0.05 + 1.10 * t, 2.57 - 1.02 * t, z)
  var direction := Vector3(cos(angle), sin(angle), 0.0)
  var butt := grip_center - direction * (STICK_LENGTH * 0.5)
  var tip := grip_center + direction * (STICK_LENGTH * 0.5)
@@ -418,7 +420,8 @@ func _physics_process(delta: float) -> void:
   var stopping_distance := swing_speed * swing_speed / (2.0 * SWING_BRAKE)
   var acceleration := -SWING_BRAKE if stopping_distance >= (1.0 - swing) else SWING_ACCEL
   swing_speed = clampf(swing_speed + acceleration * delta, 0.0, SWING_MAX_SPEED)
-  swing = minf(1.0, swing + swing_speed * delta)
+  # Avoid a zero-speed deadlock at the end of a braked swing.
+  swing = minf(1.0, swing + maxf(swing_speed, 0.30) * delta)
   var result := check_sweep(old, swing, previous_guard, guard_ends())
   if result == "block":
    score_block += 100
@@ -439,7 +442,7 @@ func _physics_process(delta: float) -> void:
    active_attack = false
    swing = -1.0
   elif swing >= 1.0:
-   say("MISS: terkeh did not reach the darak or leg. Check distance.")
+   say("MISS: tip completed its arc without touching guard or legal leg.")
    swing_speed = 0.0
    recovery_from = 1.0
    recovery = 0.0
