@@ -5,7 +5,10 @@ extends Node3D
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
-const SWING_SECONDS := 0.62
+const SWING_SECONDS := 0.82
+const RECOVERY_SECONDS := 0.32
+const MAX_SWEEP_STEP := 0.025
+const FEINT_DEPTH_LIMIT := 0.60
 const STICK_LENGTH := 2.15
 const STICK_RADIUS := 0.055
 const GUARD_RADIUS := 0.09
@@ -17,6 +20,10 @@ var darak: MeshInstance3D
 var attack_x := -2.7
 var swing := -1.0
 var swing_finished := false
+var recovery := -1.0
+var recovery_from := 1.0
+var guard_velocity := 0.0
+var swing_outcome := ""
 var defending := false
 var opponent_delay := -1.0
 var feint_depth := 0.0
@@ -35,6 +42,7 @@ var attack_arm_a: MeshInstance3D
 var attack_arm_b: MeshInstance3D
 var defend_arm: MeshInstance3D
 var last_outcome := ""
+var active_attack := false
 
 func material(c: Color) -> StandardMaterial3D:
  var m := StandardMaterial3D.new()
@@ -160,15 +168,20 @@ func _input(event: InputEvent) -> void:
    KEY_TAB:
     defending = not defending
     swing = -1.0
+    recovery = -1.0
+    active_attack = false
     opponent_delay = -1.0
     attack_x = -0.2 if defending else -2.7
     guard_shift = 0.0
+    guard_velocity = 0.0
     guard_target = 0.0
     say("DEFENSE: SPACE starts opponent; W/S move darak while it stays in hand." if defending else "ATTACK: approach with D, feint J/L, swing SPACE.")
    KEY_R:
     defending = false
     attack_x = -2.7
     swing = -1.0
+    recovery = -1.0
+    active_attack = false
     opponent_delay = -1.0
     guard_shift = 0.0
     guard_target = 0.0
@@ -177,7 +190,7 @@ func _input(event: InputEvent) -> void:
     score_block = 0
     say("Reset. Move closer before striking.")
    KEY_J:
-    if not defending and swing < 0.0:
+    if not defending and swing < 0.0 and recovery < 0.0:
      feint_target = -0.60
      say("Feint BEHIND the attacker (far side of body).")
    KEY_L:
@@ -185,7 +198,7 @@ func _input(event: InputEvent) -> void:
      feint_target = 0.65
      say("Feint IN FRONT of the attacker (near camera).")
    KEY_SPACE:
-    if swing < 0.0 and opponent_delay < 0.0:
+    if swing < 0.0 and recovery < 0.0 and opponent_delay < 0.0:
      if defending:
       opponent_delay = 0.55
       say("Watch the opponent. W/S shifts the held darak.")
@@ -195,31 +208,40 @@ func _input(event: InputEvent) -> void:
 func start_swing() -> void:
  swing = 0.0
  swing_finished = false
+ active_attack = true
+ swing_outcome = ""
  feint_target = 0.0
  say("Swing: physical terkeh sweeps toward the defender.")
 
 func strike_ends(p: float) -> Array[Vector3]:
- # A long, visibly continuous wooden rod; the near grip stays in raised hands.
- var t := smoothstep(0.0, 1.0, clampf(p, 0.0, 1.0))
- var angle := lerpf(0.12, -1.20, t)
- var z := lerpf(feint_depth, 0.26, t)
- var grip := Vector3(attack_x + 0.36, 2.51 - 0.10 * t, z)
- var tip := grip + Vector3(cos(angle) * STICK_LENGTH, sin(angle) * STICK_LENGTH, 0)
+ # Kinematic, constrained two-handed strike. The grip is always at the hands.
+ # Acceleration and deceleration make the swing read as a weighted wooden rod.
+ var t := clampf(p, 0.0, 1.0)
+ var eased := t * t * (3.0 - 2.0 * t)
+ var angle := lerpf(0.22, -1.27, eased)
+ var z := lerpf(feint_depth, 0.19, eased)
+ var grip := Vector3(attack_x + 0.35 + 0.10 * eased, 2.50 - 0.17 * eased, z)
+ var tip := grip + Vector3(cos(angle) * STICK_LENGTH, sin(angle) * STICK_LENGTH, 0.0)
  return [grip, tip]
 
 func guard_ends() -> Array[Vector3]:
  # One grip always follows the defender's hand. The lower end pivots across the shins.
  var grip := Vector3(DEF_X - 0.36, 1.37, 0.28)
- var bottom := Vector3(DEF_X - 0.52 + guard_shift, 0.08, 0.28)
+ var bottom := Vector3(DEF_X - 0.52 + guard_shift, 0.10, 0.28)
  var top := grip + (grip - bottom).normalized() * 0.55
  return [bottom, top]
 
 func update_visuals() -> void:
  attacker.position.x = attack_x
- var ends := strike_ends(0.0 if swing < 0.0 else swing)
+ var pose := 0.0
+ if swing >= 0.0:
+  pose = swing
+ elif recovery >= 0.0:
+  pose = lerpf(recovery_from, 0.0, smoothstep(0.0, 1.0, recovery))
+ var ends := strike_ends(pose)
  var a := ends[0]
  var b := ends[1]
- if swing < 0.0:
+ if swing < 0.0 and recovery < 0.0:
   a.z = feint_depth
   b.z = feint_depth
  place_rod(terkeh, a, b)
@@ -254,8 +276,10 @@ func segment_distance(a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> float:
 
 func check_sweep(previous: float, current: float) -> String:
  var g := guard_ends()
- for i in range(1, 21):
-  var p := lerpf(previous, current, float(i) / 20.0)
+ # Adaptive swept collision: never skip a thin staff on a slow frame.
+ var steps := maxi(1, ceili((current - previous) / MAX_SWEEP_STEP))
+ for i in range(1, steps + 1):
+  var p := lerpf(previous, current, float(i) / float(steps))
   var s := strike_ends(p)
   if segment_distance(s[0], s[1], g[0], g[1]) <= STICK_RADIUS + GUARD_RADIUS + 0.055:
    return "block"
@@ -267,7 +291,7 @@ func check_sweep(previous: float, current: float) -> String:
  return ""
 
 func _process(delta: float) -> void:
- if swing < 0.0 and not defending:
+ if swing < 0.0 and recovery < 0.0 and not defending:
   if Input.is_key_pressed(KEY_D):
    attack_x = minf(MAX_X, attack_x + 2.0 * delta)
   if Input.is_key_pressed(KEY_A):
@@ -277,12 +301,20 @@ func _process(delta: float) -> void:
    guard_target = minf(0.53, guard_target + delta * 1.65)
   if Input.is_key_pressed(KEY_S):
    guard_target = maxf(-0.53, guard_target - delta * 1.65)
-  guard_shift = move_toward(guard_shift, guard_target, delta * 2.8)
+  # Critically damped hand-guided guard: the staff follows, never detaches.
+  var stiffness := 48.0
+  var damping := 2.0 * sqrt(stiffness)
+  guard_velocity += (stiffness * (guard_target - guard_shift) - damping * guard_velocity) * delta
+  guard_shift = clampf(guard_shift + guard_velocity * delta, -0.53, 0.53)
   if opponent_delay >= 0.0:
    opponent_delay -= delta
    if opponent_delay < 0.0:
     start_swing()
- feint_depth = move_toward(feint_depth, feint_target, delta * 1.7)
+ feint_depth = move_toward(feint_depth, clampf(feint_target, -FEINT_DEPTH_LIMIT, FEINT_DEPTH_LIMIT), delta * 1.7)
+ if recovery >= 0.0:
+  recovery += delta / RECOVERY_SECONDS
+  if recovery >= 1.0:
+   recovery = -1.0
  if swing >= 0.0:
   var old := swing
   swing = minf(1.0, swing + delta / SWING_SECONDS)
@@ -290,13 +322,22 @@ func _process(delta: float) -> void:
   if result == "block":
    score_block += 100
    say("BLOCK: terkeh touched the held darak! Defender +100")
+   recovery_from = swing
+   recovery = 0.0
+   active_attack = false
    swing = -1.0
   elif result == "leg":
    score_hit += 100
    say("LEGAL CONTACT: terkeh reached below-knee target. Attacker +100")
+   recovery_from = swing
+   recovery = 0.0
+   active_attack = false
    swing = -1.0
   elif swing >= 1.0:
    say("MISS: terkeh did not reach the darak or leg. Check distance.")
+   recovery_from = 1.0
+   recovery = 0.0
+   active_attack = false
    swing = -1.0
  update_visuals()
  header.text = ("DEFENSE TEST" if defending else "ATTACK TEST") + "   |   Hit: %d   Block: %d" % [score_hit, score_block]
