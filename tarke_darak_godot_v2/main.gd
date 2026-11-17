@@ -9,6 +9,9 @@ const SWING_SECONDS := 0.82
 const RECOVERY_SECONDS := 0.32
 const MAX_SWEEP_STEP := 0.025
 const FEINT_DEPTH_LIMIT := 0.60
+const SWING_ACCEL := 10.0 # normalized phase acceleration / s^2
+const SWING_BRAKE := 14.0
+const SWING_MAX_SPEED := 2.35 # normalized phase / s
 const STICK_LENGTH := 2.15
 const STICK_RADIUS := 0.055
 const GUARD_RADIUS := 0.09
@@ -45,6 +48,9 @@ var defend_arm: MeshInstance3D
 var defend_arm_b: MeshInstance3D
 var last_outcome := ""
 var active_attack := false
+var swing_speed := 0.0
+var impact_hold := 0.0
+var impact_message := ""
 
 func material(c: Color) -> StandardMaterial3D:
  var m := StandardMaterial3D.new()
@@ -174,6 +180,8 @@ func _input(event: InputEvent) -> void:
     swing = -1.0
     recovery = -1.0
     active_attack = false
+    swing_speed = 0.0
+    impact_hold = 0.0
     opponent_delay = -1.0
     attack_x = -0.2 if defending else -2.7
     guard_shift = 0.0
@@ -186,6 +194,8 @@ func _input(event: InputEvent) -> void:
     swing = -1.0
     recovery = -1.0
     active_attack = false
+    swing_speed = 0.0
+    impact_hold = 0.0
     opponent_delay = -1.0
     guard_shift = 0.0
     guard_velocity = 0.0
@@ -213,6 +223,7 @@ func _input(event: InputEvent) -> void:
 
 func start_swing() -> void:
  swing = 0.0
+ swing_speed = 0.0
  swing_finished = false
  active_attack = true
  swing_outcome = ""
@@ -223,10 +234,10 @@ func strike_ends(p: float) -> Array[Vector3]:
  # Kinematic, constrained two-handed strike. The grip is always at the hands.
  # Acceleration and deceleration make the swing read as a weighted wooden rod.
  var t := clampf(p, 0.0, 1.0)
- var eased := t * t * (3.0 - 2.0 * t)
- var angle := lerpf(0.22, -1.27, eased)
- var z := lerpf(feint_depth, 0.19, eased)
- var grip := Vector3(attack_x + 0.35 + 0.10 * eased, 2.50 - 0.17 * eased, z)
+ # Phase is integrated with angular acceleration and braking, not eased by time.
+ var angle := lerpf(0.22, -1.27, t)
+ var z := lerpf(feint_depth, 0.19, t)
+ var grip := Vector3(attack_x + 0.35 + 0.10 * t, 2.50 - 0.17 * t, z)
  var tip := grip + Vector3(cos(angle) * STICK_LENGTH, sin(angle) * STICK_LENGTH, 0.0)
  return [grip, tip]
 
@@ -325,17 +336,25 @@ func _physics_process(delta: float) -> void:
    if opponent_delay < 0.0:
     start_swing()
  feint_depth = move_toward(feint_depth, clampf(feint_target, -FEINT_DEPTH_LIMIT, FEINT_DEPTH_LIMIT), delta * 1.7)
- if recovery >= 0.0:
+ if impact_hold > 0.0:
+  impact_hold = maxf(0.0, impact_hold - delta)
+ if recovery >= 0.0 and impact_hold <= 0.0:
   recovery += delta / RECOVERY_SECONDS
   if recovery >= 1.0:
    recovery = -1.0
  if swing >= 0.0:
   var old := swing
-  swing = minf(1.0, swing + delta / SWING_SECONDS)
+  # Accelerate the rod, then brake before the end of its travel.
+  var stopping_distance := swing_speed * swing_speed / (2.0 * SWING_BRAKE)
+  var acceleration := -SWING_BRAKE if stopping_distance >= (1.0 - swing) else SWING_ACCEL
+  swing_speed = clampf(swing_speed + acceleration * delta, 0.0, SWING_MAX_SPEED)
+  swing = minf(1.0, swing + swing_speed * delta)
   var result := check_sweep(old, swing, previous_guard, guard_ends())
   if result == "block":
    score_block += 100
    say("BLOCK: terkeh touched the held darak! Defender +100")
+   impact_hold = 0.11
+   swing_speed = 0.0
    recovery_from = swing
    recovery = 0.0
    active_attack = false
@@ -343,12 +362,15 @@ func _physics_process(delta: float) -> void:
   elif result == "leg":
    score_hit += 100
    say("LEGAL CONTACT: terkeh reached below-knee target. Attacker +100")
+   impact_hold = 0.07
+   swing_speed = 0.0
    recovery_from = swing
    recovery = 0.0
    active_attack = false
    swing = -1.0
   elif swing >= 1.0:
    say("MISS: terkeh did not reach the darak or leg. Check distance.")
+   swing_speed = 0.0
    recovery_from = 1.0
    recovery = 0.0
    active_attack = false
