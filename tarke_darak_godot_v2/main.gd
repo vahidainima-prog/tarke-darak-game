@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v3.8 - dance footwork"
+const BUILD_LABEL := "v3.9 - leg-target strike"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -282,29 +282,27 @@ func start_swing() -> void:
  say("Swing: physical terkeh sweeps toward the defender.")
 
 func strike_ends(p: float) -> Array[Vector3]:
- # Kinematic, constrained two-handed strike. The grip is always at the hands.
- # Acceleration and deceleration make the swing read as a weighted wooden rod.
+ # The visible free tip travels from above the head to the opponent's lower leg.
+ # Maximum reach is fixed: moving closer matters, and distant swings still miss.
  var t := clampf(p, 0.0, 1.0)
- # Phase is integrated with angular acceleration and braking, not eased by time.
- # A full follow-through: the tip travels forward and down toward the shins.
- # Lateral depth passes through the guard plane before the leg plane.
- var angle := lerpf(0.0, -1.35, smoothstep(0.0, 1.0, t))
- var z := lerpf(-0.46 + feint_depth * 0.25, 0.38, smoothstep(0.0, 0.65, t))
- z = lerpf(z, 0.05, smoothstep(0.65, 1.0, t))
- # The rod extends on BOTH sides of the two-handed grip, rather than
- # pointing out from a single hand. This keeps the ready pose horizontal.
- # The holding hand drives the rod forward; the tip drops to shin height.
- var grip_center := Vector3(attack_x + 0.05 + 1.27 * t, 2.57 - 1.26 * t, z)
+ var arc := smoothstep(0.0, 1.0, t)
+ var distance := defender_x - attack_x
+ var tip_reach := minf(2.02, distance - 0.18)
+ var tip_x := attack_x + lerpf(1.125, tip_reach, arc)
+ var tip_y := lerpf(2.57, 0.43, arc)
+ # Cross the defender's guard plane on the way to the leg plane.
+ var tip_z := lerpf(-0.46, 0.02, smoothstep(0.0, 1.0, t))
+ var angle := lerpf(0.0, -0.86, arc)
  var direction := Vector3(cos(angle), sin(angle), 0.0)
- var butt := grip_center - direction * (STICK_LENGTH * 0.5)
- var tip := grip_center + direction * (STICK_LENGTH * 0.5)
+ var tip := Vector3(tip_x, tip_y, tip_z)
+ var butt := tip - direction * STICK_LENGTH
  return [butt, tip]
 
 func guard_ends() -> Array[Vector3]:
  # One grip always follows the defender's hand. The lower end pivots across the shins.
  # Guard is held slightly ahead of the defender (toward the attacker) and camera.
- var grip := Vector3(defender_x - 0.48, 1.39, 0.48)
- var bottom := Vector3(defender_x - 0.69 + guard_shift, 0.10, 0.48)
+ var grip := Vector3(defender_x - 0.48, 1.39, 0.18)
+ var bottom := Vector3(defender_x - 0.69 + guard_shift, 0.10, 0.18)
  var top := grip + (grip - bottom).normalized() * 0.55
  return [bottom, top]
 
@@ -356,8 +354,8 @@ func update_visuals() -> void:
  if recovery >= 0.0:
   release_target *= 1.0 - smoothstep(0.20, 0.95, recovery)
  release_blend = release_target
- var left_grip := a + direction * 0.12
- var right_grip := b - direction * 0.12
+ var left_grip := a + direction * 0.14
+ var right_grip := a + direction * lerpf(1.93, 0.55, smoothstep(0.0, 0.35, pose))
  var left_rest := Vector3(attack_x - 0.30, 1.86, 0.25)
  var right_rest := Vector3(attack_x + 0.33, 1.88, 0.25)
  attack_hand_a.position = left_grip.lerp(left_rest, release_blend if strike_side < 0 else 0.0)
