@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v4.1 - bending strike"
+const BUILD_LABEL := "v4.2 - waist joint"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -135,15 +135,20 @@ func person(name: String, x: float, face_right: bool) -> Node3D:
  var cloth := Color(0.86, 0.81, 0.66)
  var black := Color(0.065, 0.07, 0.085)
  var skin := Color(0.65, 0.45, 0.32)
- block(root, "Chogha", Vector3(0.62, 0.90, 0.38), Vector3(0, 1.57, 0), cloth)
+ # Waist pivot: torso, chogha, stripes and head share a single transform.
+ var waist := Node3D.new()
+ waist.name = "WaistJoint"
+ root.add_child(waist)
+ waist.position = Vector3(0, 1.14, 0)
+ block(waist, "Chogha", Vector3(0.62, 0.90, 0.38), Vector3(0, 0.43, 0), cloth)
  for off in [-0.18, -0.05, 0.10, 0.22]:
-  block(root, "Stripe", Vector3(0.043, 0.85, 0.39), Vector3(off, 1.57, 0), black)
+  block(waist, "Stripe", Vector3(0.043, 0.85, 0.39), Vector3(off, 0.43, 0), black)
  for side in [-1.0, 1.0]:
   block(root, "Debit trousers", Vector3(0.33, 0.91, 0.43), Vector3(side * 0.18, 0.70, 0), black)
   block(root, "Giveh", Vector3(0.40, 0.18, 0.52), Vector3(side * 0.18 + (0.08 if face_right else -0.08), 0.12, 0.09), cloth)
- block(root, "Head", Vector3(0.36, 0.38, 0.37), Vector3(0, 2.26, 0), skin)
- block(root, "Hat", Vector3(0.44, 0.23, 0.44), Vector3(0, 2.54, 0), black)
- block(root, "Nose-facing", Vector3(0.12, 0.11, 0.15), Vector3(0.22 if face_right else -0.22, 2.27, 0.06), skin)
+ block(waist, "Head", Vector3(0.36, 0.38, 0.37), Vector3(0, 1.12, 0), skin)
+ block(waist, "Hat", Vector3(0.44, 0.23, 0.44), Vector3(0, 1.40, 0), black)
+ block(waist, "Nose-facing", Vector3(0.12, 0.11, 0.15), Vector3(0.22 if face_right else -0.22, 1.13, 0.06), skin)
  return root
 
 func _ready() -> void:
@@ -326,16 +331,11 @@ func animate_footwork(character: Node3D, phase: float, motion: float, swing_pose
    var step := sin(phase + (0.0 if side < 0.0 else PI))
    n.position.x = base_x + 0.19 * stride * step + facing * 0.08 * accent
    n.position.y = (0.12 if n.name.begins_with("Giveh") else 0.70) + 0.08 * stride * maxf(0.0, step)
-  elif n.name == "Chogha" or n.name.begins_with("Stripe"):
-   n.rotation.z = -facing * (0.035 * stride * sin(phase) + 0.10 * accent + lean)
-   n.position.x = (0.0 if n.name == "Chogha" else n.position.x)
-   n.position.y = 1.57 - 0.25 * bend
-  elif n.name == "Head" or n.name == "Hat" or n.name == "Nose-facing":
-   var head_x := 0.22 if n.name == "Nose-facing" else 0.0
-   var head_y := 2.27 if n.name == "Nose-facing" else (2.54 if n.name == "Hat" else 2.26)
-   n.position.x = head_x + facing * 0.34 * bend
-   n.position.y = head_y - 0.48 * bend
-   n.rotation.z = -facing * 0.23 * bend
+  elif n.name == "WaistJoint":
+   # One anatomical hinge carries clothing, head and shoulders together.
+   n.rotation.z = -facing * (0.05 * stride * sin(phase) + 0.53 * bend)
+   n.rotation.y = float(strike_side) * 0.16 * bend if facing > 0.0 else 0.0
+   n.position = Vector3(facing * 0.10 * bend, 1.14 - 0.15 * bend, 0.0)
 
 func update_visuals() -> void:
  attacker.position.x = attack_x
@@ -348,7 +348,7 @@ func update_visuals() -> void:
  animate_footwork(attacker, attack_step_phase, attack_x - last_attack_x, pose, 1.0)
  animate_footwork(defender, defend_step_phase, defender_x - last_defender_x, 0.0, -1.0)
  var bend_amount := smoothstep(0.12, 0.82, pose)
- var shoulder_shift := Vector3(0.31 * bend_amount, -0.42 * bend_amount, 0.0)
+ var shoulder_shift := Vector3(0.45 * bend_amount, -0.50 * bend_amount, 0.0)
  var ends := strike_ends(pose)
  var a := ends[0]
  var b := ends[1]
