@@ -105,7 +105,7 @@ func _ready() -> void:
  var world := WorldEnvironment.new()
  var env := Environment.new()
  env.background_mode = Environment.BG_COLOR
- env.background_color = Color(0.57, 0.74, 0.87)
+ env.background_color = Color(0.48, 0.27, 0.64) # V3 connection test: unmistakable purple sky
  env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
  env.ambient_light_color = Color(0.85, 0.88, 0.9)
  world.environment = env
