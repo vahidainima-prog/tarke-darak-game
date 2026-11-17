@@ -199,7 +199,7 @@ func _ready() -> void:
  detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
  column.add_child(detail)
  var footer := Label.new()
- footer.text = "A / D: move active fighter   |   J/L: feint   |   SPACE: swing   |   TAB: defend   |   W/S: darak   |   R: reset"
+ footer.text = "A/D or arrows: move selected fighter | TAB: switch | W/S: darak | J/L: feint | SPACE: swing | R: reset"
  footer.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
  footer.offset_top = -43
  footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -223,8 +223,8 @@ func _input(event: InputEvent) -> void:
     swing_speed = 0.0
     impact_hold = 0.0
     opponent_delay = -1.0
-    attack_x = -1.7 if defending else -2.7
-    defender_x = DEF_X
+    # Switching control does not teleport either fighter.
+    # Their current positions remain visible and controllable.
     guard_shift = 0.0
     guard_velocity = 0.0
     guard_target = 0.0
@@ -279,9 +279,13 @@ func strike_ends(p: float) -> Array[Vector3]:
  # Phase is integrated with angular acceleration and braking, not eased by time.
  var angle := lerpf(0.22, -1.27, t)
  var z := lerpf(feint_depth, 0.19, t)
- var grip := Vector3(attack_x + 0.35 + 0.10 * t, 2.50 - 0.17 * t, z)
- var tip := grip + Vector3(cos(angle) * STICK_LENGTH, sin(angle) * STICK_LENGTH, 0.0)
- return [grip, tip]
+ # The rod extends on BOTH sides of the two-handed grip, rather than
+ # pointing out from a single hand. This keeps the ready pose horizontal.
+ var grip_center := Vector3(attack_x + 0.43 + 0.10 * t, 2.49 - 0.17 * t, z)
+ var direction := Vector3(cos(angle), sin(angle), 0.0)
+ var butt := grip_center - direction * 0.48
+ var tip := grip_center + direction * (STICK_LENGTH - 0.48)
+ return [butt, tip]
 
 func guard_ends() -> Array[Vector3]:
  # One grip always follows the defender's hand. The lower end pivots across the shins.
@@ -308,8 +312,9 @@ func update_visuals() -> void:
  place_rod(terkeh, a, b)
  # Two visible hands remain around the wooden grip and move together with it.
  var direction := (b - a).normalized()
- attack_hand_a.position = a + direction * 0.10
- attack_hand_b.position = a + direction * 0.35
+ # Both hands surround the center grip; visible wooden ends remain on either side.
+ attack_hand_a.position = a + direction * 0.31
+ attack_hand_b.position = a + direction * 0.65
  place_two_bone_arm(attack_arm_a, attack_forearm_a, attack_elbow_a, Vector3(attack_x + 0.20, 1.92, -0.14), attack_hand_a.position, Vector3(-0.6, 0.1, -0.7))
  place_two_bone_arm(attack_arm_b, attack_forearm_b, attack_elbow_b, Vector3(attack_x + 0.20, 1.92, 0.16), attack_hand_b.position, Vector3(-0.6, 0.1, 0.7))
  var g := guard_ends()
@@ -358,15 +363,15 @@ func check_sweep(previous: float, current: float, previous_guard: Array[Vector3]
 func _physics_process(delta: float) -> void:
  var previous_guard := guard_ends()
  if swing < 0.0 and recovery < 0.0 and not defending:
-  if Input.is_key_pressed(KEY_D):
+  if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
    attack_x = minf(minf(MAX_X, defender_x - MIN_FIGHTER_GAP), attack_x + 2.0 * delta)
-  if Input.is_key_pressed(KEY_A):
+  if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
    attack_x = maxf(MIN_X, attack_x - 2.0 * delta)
  if defending:
   # In defense mode A/D move the defender; never allow bodies to overlap.
-  if Input.is_key_pressed(KEY_A):
+  if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
    defender_x = maxf(maxf(DEFENDER_MIN_X, attack_x + MIN_FIGHTER_GAP), defender_x - 1.8 * delta)
-  if Input.is_key_pressed(KEY_D):
+  if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
    defender_x = minf(DEFENDER_MAX_X, defender_x + 1.8 * delta)
   if Input.is_key_pressed(KEY_W):
    guard_target = minf(0.53, guard_target + delta * 1.65)
