@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v4.9 - forward arm and active guard"
+const BUILD_LABEL := "v5.0 - switchable third-person camera"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -70,6 +70,9 @@ var attack_step_phase := 0.0
 var defend_step_phase := 0.0
 var last_attack_x := -2.7
 var last_defender_x := DEF_X
+var game_camera: Camera3D
+var shoulder_camera := false
+var camera_focus := Vector3(0, 1.45, 0)
 
 func material(c: Color) -> StandardMaterial3D:
  var m := StandardMaterial3D.new()
@@ -212,13 +215,12 @@ func _ready() -> void:
  attack_elbow_b = block(self, "Attacker elbow far", Vector3(0.16, 0.16, 0.16), Vector3.ZERO, Color(0.66, 0.44, 0.30))
  defend_elbow_a = block(self, "Defender elbow near", Vector3(0.17, 0.17, 0.17), Vector3.ZERO, Color(0.66, 0.44, 0.30))
  defend_elbow_b = block(self, "Defender elbow far", Vector3(0.17, 0.17, 0.17), Vector3.ZERO, Color(0.66, 0.44, 0.30))
- var cam := Camera3D.new()
- add_child(cam)
- # Slight three-quarter view makes opposite-side hand paths visible.
- cam.position = Vector3(0, 2.45, 12.5)
- cam.look_at(Vector3(0, 1.45, 0), Vector3.UP)
- cam.fov = 53.0
- cam.current = true
+ game_camera = Camera3D.new()
+ add_child(game_camera)
+ game_camera.position = Vector3(0, 2.45, 12.5)
+ game_camera.look_at(camera_focus, Vector3.UP)
+ game_camera.fov = 53.0
+ game_camera.current = true
  var layer := CanvasLayer.new()
  add_child(layer)
  var panel := PanelContainer.new()
@@ -239,7 +241,7 @@ func _ready() -> void:
  detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
  column.add_child(detail)
  var footer := Label.new()
- footer.text = "A/D: move | TAB: switch | W/S: darak | J: left strike | L: right strike | SPACE: swing | R: reset"
+ footer.text = "A/D: move | TAB: switch | C: camera | W/S: darak | J/L: strike side | SPACE: swing | R: reset"
  footer.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
  footer.offset_top = -43
  footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -255,6 +257,9 @@ func say(s: String) -> void:
 func _input(event: InputEvent) -> void:
  if event is InputEventKey and event.pressed and not event.echo:
   match event.keycode:
+   KEY_C:
+    shoulder_camera = not shoulder_camera
+    say("Camera: behind the controlled fighter" if shoulder_camera else "Camera: original side view")
    KEY_TAB:
     defending = not defending
     swing = -1.0
@@ -458,6 +463,24 @@ func check_sweep(previous: float, current: float, previous_guard: Array[Vector3]
     return "leg"
  return ""
 
+func update_camera(delta: float) -> void:
+ if game_camera == null:
+  return
+ var target_position := Vector3(0.0, 2.45, 12.5)
+ var target_focus := Vector3(0.0, 1.45, 0.0)
+ if shoulder_camera:
+  var controlled_x := defender_x if defending else attack_x
+  var opponent_x := attack_x if defending else defender_x
+  var facing := -1.0 if defending else 1.0
+  # Behind the controlled fighter along the attack axis, slightly offset
+  # toward the viewer so the fighter and incoming stick remain visible.
+  target_position = Vector3(controlled_x - facing * 3.15, 2.35, 3.65)
+  target_focus = Vector3(lerpf(controlled_x, opponent_x, 0.53), 1.30, 0.0)
+ var weight := 1.0 - exp(-5.5 * delta)
+ game_camera.position = game_camera.position.lerp(target_position, weight)
+ camera_focus = camera_focus.lerp(target_focus, weight)
+ game_camera.look_at(camera_focus, Vector3.UP)
+
 func _physics_process(delta: float) -> void:
  var previous_guard := guard_ends()
  var before_attack := attack_x
@@ -540,5 +563,6 @@ func _physics_process(delta: float) -> void:
  last_attack_x = attack_x - attack_velocity / 1.8
  last_defender_x = defender_x - defend_velocity / 1.8
  update_visuals()
+ update_camera(delta)
  header.text = BUILD_LABEL + "  |  " + ("DEFENSE TEST" if defending else "ATTACK TEST") + "  |  Hit: %d  Block: %d" % [score_hit, score_block]
  detail.text = "Target: %s leg  |  Distance: %.2f m  |  Guard side: %.2f m  |  W/S: defend" % [("near" if strike_side > 0 else "far"), defender_x - attack_x, guard_shift]
