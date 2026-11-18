@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v9.2 - late cancel feints"
+const BUILD_LABEL := "v9.3 - adaptive feint-reading AI"
 const DEF_X := 1.55
 const STRIKES_PER_TURN := 2
 const STRIKE_TIME_LIMIT := 20.0
@@ -55,6 +55,10 @@ const FEINT_PEAK := 0.73
 var fake_timer := 0.0
 var feint_guard_bait := false
 var ai_guard_exposed := 0.0
+var player_feint_streak := 0
+var player_feint_memory := 0.0
+var ai_feint_suspicion := 0.0
+var ai_last_baited := false
 var fake_cooldown := 0.0
 var score_hit := 0
 var score_block := 0
@@ -555,6 +559,11 @@ func _input(event: InputEvent) -> void:
 				guard_side = 0
 				ai_guard_delay = -1.0
 				fake_timer = 0.0
+				player_feint_streak = 0
+				player_feint_memory = 0.0
+				ai_feint_suspicion = 0.0
+				ai_last_baited = false
+				ai_guard_exposed = 0.0
 				fake_cooldown = 0.0
 				feint_depth = 0.0
 				feint_target = 0.0
@@ -585,6 +594,9 @@ func _input(event: InputEvent) -> void:
 			KEY_F:
 				if not defending and swap_time <= 0.0 and not pending_turn_change and swing < 0.0 and recovery < 0.0 and fake_cooldown <= 0.0:
 					fake_timer = FEINT_DURATION
+					player_feint_streak += 1
+					player_feint_memory = 7.0
+					ai_feint_suspicion = clampf(ai_feint_suspicion + 0.17, 0.0, 0.80)
 					feint_guard_bait = false
 					fake_cooldown = 1.10
 			KEY_Q, KEY_E:
@@ -703,7 +715,13 @@ func start_swing() -> void:
 		pending_turn_change = true
 	if not defending:
 		# AI reads the windup with imperfect accuracy and variable reaction.
-		ai_guard_delay = randf_range(0.18, 0.40) if ai_guard_exposed <= 0.0 and randf() < ai_guard_chance else -1.0
+		# Repeated fakes make Pedram hesitate, while a successful bait
+		# still creates a genuine opening for a fast follow-up.
+		var read_chance := clampf(ai_guard_chance - ai_feint_suspicion * 0.18, 0.32, 0.75)
+		ai_guard_delay = randf_range(0.18 + ai_feint_suspicion * 0.12, 0.40 + ai_feint_suspicion * 0.18) if ai_guard_exposed <= 0.0 and randf() < read_chance else -1.0
+		ai_feint_suspicion = maxf(0.0, ai_feint_suspicion - 0.09)
+		player_feint_streak = 0
+		player_feint_memory = 0.0
 		ai_guard_side = -strike_side if randf() < 0.82 else strike_side
 		guard_window = 0.0
 		guard_cooldown = 0.0
@@ -980,10 +998,17 @@ func _physics_process(delta: float) -> void:
 	var previous_guard := guard_ends()
 	fake_timer = maxf(0.0, fake_timer - delta)
 	ai_guard_exposed = maxf(0.0, ai_guard_exposed - delta)
+	player_feint_memory = maxf(0.0, player_feint_memory - delta)
+	if player_feint_memory <= 0.0:
+		player_feint_streak = 0
+	ai_feint_suspicion = maxf(0.0, ai_feint_suspicion - delta * 0.015)
 	if fake_timer > 0.0 and not defending and not feint_guard_bait:
 		if 1.0 - fake_timer / FEINT_DURATION >= 0.28:
 			feint_guard_bait = true
-			if randf() < 0.55:
+			var bait_chance := clampf(0.65 - ai_feint_suspicion * 0.55, 0.17, 0.75)
+			ai_last_baited = randf() < bait_chance
+			if ai_last_baited:
+				ai_feint_suspicion = clampf(ai_feint_suspicion + 0.11, 0.0, 0.80)
 				guard_side = -strike_side
 				guard_target = float(guard_side)
 				guard_window = 0.26
