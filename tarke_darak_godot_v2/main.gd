@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v5.7 - labeled defender left and right legs"
+const BUILD_LABEL := "v5.8 - labeled hands and feet for both fighters"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -148,12 +148,30 @@ func person(name: String, x: float, face_right: bool) -> Node3D:
  for off in [-0.18, -0.05, 0.10, 0.22]:
   block(waist, "Stripe", Vector3(0.043, 0.85, 0.39), Vector3(off, 0.43, 0), black)
  for side in [-1.0, 1.0]:
-  block(root, "Debit trousers", Vector3(0.33, 0.91, 0.34), Vector3(0.0, 0.70, side * 0.34), black)
-  block(root, "Giveh", Vector3(0.40, 0.18, 0.44), Vector3((0.08 if face_right else -0.08), 0.12, side * 0.34), cloth)
+  var trouser := block(root, "Debit trousers", Vector3(0.33, 0.91, 0.34), Vector3(0.0, 0.70, side * 0.34), black)
+  var shoe := block(root, "Giveh", Vector3(0.40, 0.18, 0.44), Vector3((0.08 if face_right else -0.08), 0.12, side * 0.34), cloth)
+  var right_side := side > 0.0 if face_right else side < 0.0
+  var side_label := "R" if right_side else "L"
+  var side_color := Color(1.0, 0.18, 0.16) if right_side else Color(0.15, 0.48, 1.0)
+  add_joint_debug_label(trouser, side_label, side_color, Vector3(0.0, -0.04, 0.25))
+  add_joint_debug_label(shoe, side_label, side_color, Vector3(0.0, 0.23, 0.0))
  block(waist, "Head", Vector3(0.36, 0.38, 0.37), Vector3(0, 1.12, 0), skin)
  block(waist, "Hat", Vector3(0.44, 0.23, 0.44), Vector3(0, 1.40, 0), black)
  block(waist, "Nose-facing", Vector3(0.12, 0.11, 0.15), Vector3(0.22 if face_right else -0.22, 1.13, 0.06), skin)
  return root
+
+func add_joint_debug_label(parent: Node3D, label_text: String, marker_color: Color, offset: Vector3) -> void:
+ var marker := Label3D.new()
+ marker.name = "DEBUG " + label_text
+ marker.text = label_text
+ marker.font_size = 72
+ marker.pixel_size = 0.005
+ marker.modulate = marker_color
+ marker.outline_size = 12
+ marker.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+ marker.no_depth_test = true
+ marker.position = offset
+ parent.add_child(marker)
 
 func add_leg_debug_marker(parent: Node3D, label_text: String, z_side: float, marker_color: Color) -> void:
  # Defender faces -X: anatomical RIGHT is -Z, LEFT is +Z.
@@ -214,14 +232,17 @@ func _ready() -> void:
  add_scenery()
  attacker = person("Attacker facing RIGHT", attack_x, true)
  defender = person("Defender facing LEFT", defender_x, false)
- add_leg_debug_marker(defender, "L", 1.0, Color(0.15, 0.48, 1.0))
- add_leg_debug_marker(defender, "R", -1.0, Color(1.0, 0.18, 0.16))
+ # Leg labels are attached directly to each moving trouser and shoe.
  terkeh = rod(self, "Terkeh attached to raised hands", STICK_RADIUS, Color(0.88, 0.69, 0.34))
  darak = rod(self, "Darak held in defender hand", GUARD_RADIUS, Color(0.36, 0.22, 0.12))
  attack_hand_a = block(self, "Attacker left hand", Vector3(0.19, 0.17, 0.17), Vector3.ZERO, Color(0.67, 0.44, 0.29))
  attack_hand_b = block(self, "Attacker right hand", Vector3(0.19, 0.17, 0.17), Vector3.ZERO, Color(0.67, 0.44, 0.29))
  defend_hand = block(self, "Defender upper grip", Vector3(0.22, 0.20, 0.22), Vector3.ZERO, Color(0.67, 0.44, 0.29))
  defend_hand_b = block(self, "Defender lower grip", Vector3(0.22, 0.20, 0.22), Vector3.ZERO, Color(0.67, 0.44, 0.29))
+ add_joint_debug_label(attack_hand_a, "L", Color(0.15, 0.48, 1.0), Vector3(0.0, 0.24, 0.0))
+ add_joint_debug_label(attack_hand_b, "R", Color(1.0, 0.18, 0.16), Vector3(0.0, 0.24, 0.0))
+ add_joint_debug_label(defend_hand, "R", Color(1.0, 0.18, 0.16), Vector3(0.0, 0.26, 0.0))
+ add_joint_debug_label(defend_hand_b, "L", Color(0.15, 0.48, 1.0), Vector3(0.0, 0.26, 0.0))
  attack_arm_a = rod(self, "Attacker arm left", 0.095, Color(0.66, 0.44, 0.30))
  attack_arm_b = rod(self, "Attacker arm right", 0.095, Color(0.66, 0.44, 0.30))
  defend_arm = rod(self, "Defender arm", 0.11, Color(0.66, 0.44, 0.30))
