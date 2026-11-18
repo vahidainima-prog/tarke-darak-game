@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v8.1 - third-person camera and named fighters"
+const BUILD_LABEL := "v8.2 - true rear third-person camera"
 const DEF_X := 1.55
 const STRIKES_PER_TURN := 2
 const AI_DIFFICULTY := "MEDIUM"
@@ -301,9 +301,9 @@ func _ready() -> void:
 	defend_elbow_b = block(self, "Defender elbow far", Vector3(0.17, 0.17, 0.17), Vector3.ZERO, Color(0.66, 0.44, 0.30))
 	game_camera = Camera3D.new()
 	add_child(game_camera)
-	game_camera.position = Vector3(attack_x - 3.8, 3.25, 4.25)
+	game_camera.position = Vector3(attack_x - 4.25, 3.15, 0.18)
 	game_camera.look_at(camera_focus, Vector3.UP)
-	game_camera.fov = 53.0
+	game_camera.fov = 58.0
 	game_camera.current = true
 	var layer := CanvasLayer.new()
 	add_child(layer)
@@ -672,16 +672,17 @@ func check_sweep(previous: float, current: float, previous_guard: Array[Vector3]
 func update_camera(delta: float) -> void:
 	if game_camera == null:
 		return
-	# Camera always follows Vahid (the player), even when roles switch.
-	# The fighter's forward axis is +X; a diagonal rear camera preserves
-	# both legs, the opponent, and the chalk boundaries in the frame.
+	# Vahid faces +X. To see his BACK, camera must stay directly on
+	# the -X axis (not offset sideways along Z). The former large +Z
+	# offset made the scene look like a side view.
 	var target_position := Vector3(0.0, 2.45, 12.5)
 	var target_focus := Vector3(0.0, 1.45, 0.0)
 	if shoulder_camera:
-		var gap := maxf(1.0, defender_x - attack_x)
-		var look_ahead := clampf(gap * 0.48, 0.85, 2.1)
-		target_position = Vector3(attack_x - 3.8, 3.25, 4.25)
-		target_focus = Vector3(attack_x + look_ahead, 1.20, 0.0)
+		# Reference composition: Vahid large in the foreground, Pedram
+		# centered ahead, ground markings visible below both fighters.
+		# Keep camera distance consistent; follow Vahid in both roles.
+		target_position = Vector3(attack_x - 4.25, 3.15, 0.18)
+		target_focus = Vector3(attack_x + 1.85, 1.15, 0.0)
 	var weight := 1.0 - exp(-5.5 * delta)
 	game_camera.position = game_camera.position.lerp(target_position, weight)
 	camera_focus = camera_focus.lerp(target_focus, weight)
