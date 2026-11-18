@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v8.3 - turn-follow camera and smaller names"
+const BUILD_LABEL := "v8.4 - fair swing trails and impact feedback"
 const DEF_X := 1.55
 const STRIKES_PER_TURN := 2
 const AI_DIFFICULTY := "MEDIUM"
@@ -57,6 +57,10 @@ var defender_out_time := 0.0
 var attacker_out_penalized := false
 var defender_out_penalized := false
 var score_board: Label
+var impact_banner: Label
+var impact_banner_time := 0.0
+var trail_segments: Array[MeshInstance3D] = []
+var trail_points: Array[Vector3] = []
 var ai_guard_delay := -1.0
 var ai_guard_side := 0
 var ai_guard_chance := 0.62
@@ -279,6 +283,11 @@ func _ready() -> void:
 	tip_debug.mesh = tip_mesh
 	tip_debug.material_override = material(Color(1.0, 0.90, 0.08))
 	add_child(tip_debug)
+	# Visual trail only; never used by AI, collision or scoring.
+	for i in range(5):
+		var segment := rod(self, "Swing trail %d" % i, 0.025, Color(1.0, 0.74, 0.24))
+		segment.visible = false
+		trail_segments.append(segment)
 	attack_hand_a = block(self, "Attacker left hand", Vector3(0.19, 0.17, 0.17), Vector3.ZERO, Color(0.67, 0.44, 0.29))
 	attack_hand_b = block(self, "Attacker right hand", Vector3(0.19, 0.17, 0.17), Vector3.ZERO, Color(0.67, 0.44, 0.29))
 	defend_hand = block(self, "Defender upper grip", Vector3(0.22, 0.20, 0.22), Vector3.ZERO, Color(0.67, 0.44, 0.29))
@@ -335,6 +344,16 @@ func _ready() -> void:
 	score_board.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	score_board.add_theme_font_size_override("font_size", 20)
 	scoreboard_panel.add_child(score_board)
+	impact_banner = Label.new()
+	impact_banner.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	impact_banner.offset_left = -190
+	impact_banner.offset_right = 190
+	impact_banner.offset_top = 220
+	impact_banner.offset_bottom = 268
+	impact_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	impact_banner.add_theme_font_size_override("font_size", 29)
+	impact_banner.visible = false
+	layer.add_child(impact_banner)
 	var footer := Label.new()
 	footer.text = "A/D move | W/S guard | J/L side, F fake, SPACE strike | C camera | R reset"
 	footer.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
@@ -406,6 +425,8 @@ func _input(event: InputEvent) -> void:
 				feint_target = 0.0
 				score_hit = 0
 				score_block = 0
+				trail_points.clear()
+				impact_banner_time = 0.0
 				attacker_out_time = 0.0
 				defender_out_time = 0.0
 				attacker_out_penalized = false
@@ -437,7 +458,31 @@ func _input(event: InputEvent) -> void:
 				if not defending and not pending_turn_change and swing < 0.0 and recovery < 0.0 and opponent_delay < 0.0 and fake_timer <= 0.0:
 					start_swing()
 
+func show_impact(message: String, color: Color) -> void:
+	impact_banner.text = message
+	impact_banner.add_theme_color_override("font_color", color)
+	impact_banner_time = 0.75
+	impact_banner.visible = true
+
+
+func update_swing_trail() -> void:
+	# Capture actual tip positions only after the real swing has begun.
+	# Never preview the target side before a strike.
+	if swing >= 0.0 and swing > 0.16:
+		trail_points.push_front(strike_tip(swing))
+		if trail_points.size() > trail_segments.size() + 1:
+			trail_points.pop_back()
+	else:
+		trail_points.clear()
+	for i in range(trail_segments.size()):
+		var segment := trail_segments[i]
+		segment.visible = i + 1 < trail_points.size()
+		if segment.visible:
+			place_rod(segment, trail_points[i], trail_points[i + 1])
+
+
 func start_swing() -> void:
+	trail_points.clear()
 	if strikes_used >= STRIKES_PER_TURN:
 		return
 	strikes_used += 1
@@ -693,6 +738,9 @@ func _physics_process(delta: float) -> void:
 	var previous_guard := guard_ends()
 	fake_timer = maxf(0.0, fake_timer - delta)
 	fake_cooldown = maxf(0.0, fake_cooldown - delta)
+	impact_banner_time = maxf(0.0, impact_banner_time - delta)
+	if impact_banner != null:
+		impact_banner.visible = impact_banner_time > 0.0
 	if ai_guard_delay >= 0.0 and not defending and swing >= 0.0:
 		ai_guard_delay -= delta
 		if ai_guard_delay < 0.0:
@@ -785,6 +833,7 @@ func _physics_process(delta: float) -> void:
 		var result := check_sweep(old, swing, previous_guard, guard_ends())
 		if result == "block":
 			score_block += 100
+			show_impact("BLOCK +100", Color(0.34, 0.83, 1.0))
 			say("SUCCESSFUL DEFENSE: correct side and timing! Defender +100")
 			impact_hold = 0.22
 			swing_speed = 0.0
@@ -794,6 +843,7 @@ func _physics_process(delta: float) -> void:
 			swing = -1.0
 		elif result == "leg":
 			score_hit += 100
+			show_impact("HIT +100", Color(1.0, 0.83, 0.30))
 			say("LEGAL CONTACT: terkeh reached below-knee target. Attacker +100")
 			impact_hold = 0.19
 			swing_speed = 0.0
@@ -802,6 +852,7 @@ func _physics_process(delta: float) -> void:
 			active_attack = false
 			swing = -1.0
 		elif swing >= 1.0:
+			show_impact("MISS", Color(0.94, 0.94, 0.94))
 			say("MISS: full downward arc completed; move closer to reach the leg.")
 			impact_hold = 0.16
 			swing_speed = 0.0
@@ -842,6 +893,7 @@ func _physics_process(delta: float) -> void:
 	score_board.text = "VAHID  %d%s\nPEDRAM  %d%s\nTURN  %s  %d/%d\nAI  %s" % [score_hit, attacker_warning, score_block, defender_warning, "PEDRAM" if defending else "VAHID", strikes_used, STRIKES_PER_TURN, AI_DIFFICULTY]
 	update_fighter_names()
 	update_visuals()
+	update_swing_trail()
 	update_camera(delta)
 	header.text = BUILD_LABEL + "  |  " + ("VAHID DEFENDS / PEDRAM ATTACKS" if defending else "VAHID ATTACKS / PEDRAM DEFENDS")
 	detail.text = "Target: %s leg | Distance: %.2f m | Guard: %.2f | Window: %.2f s | Yellow dot = tip" % [("RIGHT / red R / J" if strike_side > 0 else "LEFT / blue L / L"), defender_x - attack_x, guard_shift, guard_window]
