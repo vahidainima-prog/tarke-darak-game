@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v4.4 - clear one-hand swing"
+const BUILD_LABEL := "v4.5 - photo reference poses"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -187,7 +187,8 @@ func _ready() -> void:
  defend_elbow_b = block(self, "Defender elbow far", Vector3(0.17, 0.17, 0.17), Vector3.ZERO, Color(0.66, 0.44, 0.30))
  var cam := Camera3D.new()
  add_child(cam)
- cam.position = Vector3(0, 2.45, 12.5)
+ # Slight three-quarter view makes opposite-side hand paths visible.
+ cam.position = Vector3(3.0, 2.75, 12.5)
  cam.look_at(Vector3(0, 1.45, 0), Vector3.UP)
  cam.fov = 53.0
  cam.current = true
@@ -298,9 +299,9 @@ func strike_ends(p: float) -> Array[Vector3]:
  var tip_x := attack_x + lerpf(1.125 + 0.14 * float(strike_side), tip_reach + leg_offset, arc)
  var tip_y := lerpf(2.57, 0.43, arc)
  # Cross the defender's guard plane on the way to the leg plane.
- var tip_z := lerpf(-0.46 + float(strike_side) * 0.42, 0.02, arc) + float(strike_side) * 0.48 * sin(PI * t)
- var angle := lerpf(0.0, -0.86 + float(strike_side) * 0.22, arc)
- var direction := Vector3(cos(angle), sin(angle), float(strike_side) * 0.46 * sin(PI * t)).normalized()
+ var tip_z := lerpf(-0.42, float(strike_side) * 0.19, arc) + float(strike_side) * 0.64 * sin(PI * t)
+ var angle := lerpf(0.0, -0.90 + float(strike_side) * 0.15, arc)
+ var direction := Vector3(cos(angle), sin(angle), float(strike_side) * 0.55 * sin(PI * t)).normalized()
  var tip := Vector3(tip_x, tip_y, tip_z)
  var butt := tip - direction * STICK_LENGTH
  return [butt, tip]
@@ -335,9 +336,9 @@ func animate_footwork(character: Node3D, phase: float, motion: float, swing_pose
    n.position.y = (0.12 if n.name.begins_with("Giveh") else 0.70) + 0.08 * stride * maxf(0.0, step)
   elif n.name == "WaistJoint":
    # One anatomical hinge carries clothing, head and shoulders together.
-   n.rotation.z = -facing * (0.05 * stride * sin(phase) + 0.53 * bend)
-   n.rotation.y = float(strike_side) * 0.16 * bend if facing > 0.0 else 0.0
-   n.position = Vector3(facing * 0.10 * bend, 1.14 - 0.15 * bend, 0.0)
+   n.rotation.z = -facing * (0.05 * stride * sin(phase) + 0.72 * bend)
+   n.rotation.y = float(strike_side) * 0.28 * bend if facing > 0.0 else 0.0
+   n.position = Vector3(facing * 0.15 * bend, 1.14 - 0.18 * bend, 0.0)
 
 func update_visuals() -> void:
  attacker.position.x = attack_x
@@ -350,7 +351,7 @@ func update_visuals() -> void:
  animate_footwork(attacker, attack_step_phase, attack_x - last_attack_x, pose, 1.0)
  animate_footwork(defender, defend_step_phase, defender_x - last_defender_x, 0.0, -1.0)
  var bend_amount := smoothstep(0.12, 0.82, pose)
- var shoulder_shift := Vector3(0.45 * bend_amount, -0.50 * bend_amount, 0.0)
+ var shoulder_shift := Vector3(0.51 * bend_amount, -0.58 * bend_amount, 0.0)
  var ends := strike_ends(pose)
  var a := ends[0]
  var b := ends[1]
@@ -364,16 +365,19 @@ func update_visuals() -> void:
  var phase := swing if swing >= 0.0 else (recovery_from if recovery >= 0.0 else 0.0)
  var release_target := 0.0
  if releasing:
-  release_target = smoothstep(0.0, 0.16, phase)
+  release_target = smoothstep(0.0, 0.22, phase)
  if recovery >= 0.0:
   release_target *= 1.0 - smoothstep(0.45, 0.95, recovery)
  release_blend = release_target
  # Both hands hold opposite ends at rest. During the swing only the
  # driving hand stays at its near-end grip; the other drops beside the torso.
+ # Photo reference: wide overhead grip at rest, one controlling hand at the
+ # near end in the final bent pose, opposite elbow folded toward the waist.
  var left_grip := a + direction * 0.20
  var right_grip := b - direction * 0.20
- var left_rest := Vector3(attack_x - 0.24, 1.38, -0.42)
- var right_rest := Vector3(attack_x + 0.20, 1.36, 0.55)
+ var left_rest := Vector3(attack_x + 0.08 + 0.20 * bend_amount, 1.52 - 0.24 * bend_amount, -0.33)
+ var right_rest := Vector3(attack_x + 0.13 + 0.20 * bend_amount, 1.54 - 0.24 * bend_amount, 0.39)
+ # Keep the driving hand on its own end throughout the swing.
  attack_hand_a.position = left_grip.lerp(left_rest, release_blend if strike_side < 0 else 0.0)
  attack_hand_b.position = right_grip.lerp(right_rest, release_blend if strike_side > 0 else 0.0)
  place_two_bone_arm(attack_arm_a, attack_forearm_a, attack_elbow_a, Vector3(attack_x + 0.20, 1.92, -0.14) + shoulder_shift, attack_hand_a.position, Vector3(-0.6, 0.1, -0.7))
