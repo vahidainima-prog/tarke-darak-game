@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v8.0 - two-strike turns and medium AI"
+const BUILD_LABEL := "v8.1 - third-person camera and named fighters"
 const DEF_X := 1.55
 const STRIKES_PER_TURN := 2
 const AI_DIFFICULTY := "MEDIUM"
@@ -96,7 +96,7 @@ var defend_step_phase := 0.0
 var last_attack_x := -2.7
 var last_defender_x := DEF_X
 var game_camera: Camera3D
-var shoulder_camera := false
+var shoulder_camera := true
 var camera_focus := Vector3(0, 1.45, 0)
 
 func material(c: Color) -> StandardMaterial3D:
@@ -264,8 +264,10 @@ func _ready() -> void:
 	for depth_z in [-3.35, 3.35]:
 		block(self, "Arena end line", Vector3(ARENA_RIGHT - ARENA_LEFT, 0.025, 0.07), Vector3((ARENA_LEFT + ARENA_RIGHT) * 0.5, 0.002, depth_z), Color(0.97, 0.91, 0.65))
 	add_scenery()
-	attacker = person("Attacker facing RIGHT", attack_x, true)
-	defender = person("Defender facing LEFT", defender_x, false)
+	attacker = person("Vahid", attack_x, true)
+	defender = person("Pedram", defender_x, false)
+	add_fighter_name(attacker, "وحید", Color(0.24, 0.67, 1.0))
+	add_fighter_name(defender, "پدرام", Color(1.0, 0.37, 0.30))
 	# Leg labels are attached directly to each moving trouser and shoe.
 	terkeh = rod(self, "Terkeh attached to raised hands", STICK_RADIUS, Color(0.88, 0.69, 0.34))
 	darak = rod(self, "Darak held in defender hand", GUARD_RADIUS, Color(0.36, 0.22, 0.12))
@@ -299,7 +301,7 @@ func _ready() -> void:
 	defend_elbow_b = block(self, "Defender elbow far", Vector3(0.17, 0.17, 0.17), Vector3.ZERO, Color(0.66, 0.44, 0.30))
 	game_camera = Camera3D.new()
 	add_child(game_camera)
-	game_camera.position = Vector3(0, 2.45, 12.5)
+	game_camera.position = Vector3(attack_x - 3.8, 3.25, 4.25)
 	game_camera.look_at(camera_focus, Vector3.UP)
 	game_camera.fov = 53.0
 	game_camera.current = true
@@ -334,7 +336,7 @@ func _ready() -> void:
 	score_board.add_theme_font_size_override("font_size", 20)
 	scoreboard_panel.add_child(score_board)
 	var footer := Label.new()
-	footer.text = "A/D move | W/S guard on defense turn | J/L side, F fake, SPACE strike on attack turn | R reset"
+	footer.text = "A/D move | W/S guard | J/L side, F fake, SPACE strike | C camera | R reset"
 	footer.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	footer.offset_top = -43
 	footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -342,6 +344,27 @@ func _ready() -> void:
 	layer.add_child(footer)
 	say("Your attack turn: J/L choose side, SPACE strike. Two strikes then AI attacks.")
 	update_visuals()
+
+func add_fighter_name(fighter: Node3D, fighter_name: String, color: Color) -> void:
+	var nameplate := Label3D.new()
+	nameplate.name = "FighterName"
+	nameplate.text = fighter_name
+	nameplate.font_size = 88
+	nameplate.pixel_size = 0.006
+	nameplate.modulate = color
+	nameplate.outline_size = 14
+	nameplate.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	nameplate.no_depth_test = true
+	nameplate.position = Vector3(0.0, 3.12, 0.0)
+	fighter.add_child(nameplate)
+
+
+func update_fighter_names() -> void:
+	var vahid_name: Label3D = attacker.get_node("FighterName")
+	var pedram_name: Label3D = defender.get_node("FighterName")
+	vahid_name.text = "وحید | " + ("مدافع" if defending else "مهاجم")
+	pedram_name.text = "پدرام | " + ("مهاجم" if defending else "مدافع")
+
 
 func say(s: String) -> void:
 	if status != null:
@@ -649,20 +672,21 @@ func check_sweep(previous: float, current: float, previous_guard: Array[Vector3]
 func update_camera(delta: float) -> void:
 	if game_camera == null:
 		return
+	# Camera always follows Vahid (the player), even when roles switch.
+	# The fighter's forward axis is +X; a diagonal rear camera preserves
+	# both legs, the opponent, and the chalk boundaries in the frame.
 	var target_position := Vector3(0.0, 2.45, 12.5)
 	var target_focus := Vector3(0.0, 1.45, 0.0)
 	if shoulder_camera:
-		var controlled_x := defender_x if defending else attack_x
-		var opponent_x := attack_x if defending else defender_x
-		var facing := -1.0 if defending else 1.0
-		# Behind the controlled fighter along the attack axis, slightly offset
-		# toward the viewer so the fighter and incoming stick remain visible.
-		target_position = Vector3(controlled_x - facing * 3.15, 2.35, 3.65)
-		target_focus = Vector3(lerpf(controlled_x, opponent_x, 0.53), 1.30, 0.0)
+		var gap := maxf(1.0, defender_x - attack_x)
+		var look_ahead := clampf(gap * 0.48, 0.85, 2.1)
+		target_position = Vector3(attack_x - 3.8, 3.25, 4.25)
+		target_focus = Vector3(attack_x + look_ahead, 1.20, 0.0)
 	var weight := 1.0 - exp(-5.5 * delta)
 	game_camera.position = game_camera.position.lerp(target_position, weight)
 	camera_focus = camera_focus.lerp(target_focus, weight)
 	game_camera.look_at(camera_focus, Vector3.UP)
+
 
 func _physics_process(delta: float) -> void:
 	var previous_guard := guard_ends()
@@ -814,8 +838,9 @@ func _physics_process(delta: float) -> void:
 	last_defender_x = defender_x - defend_velocity / 1.8
 	var attacker_warning := ("  OUT -100" if attacker_out_penalized else "  OUT %d" % ceili(OUT_LIMIT - attacker_out_time)) if attacker_out_time > 0.0 else ""
 	var defender_warning := ("  OUT -100" if defender_out_penalized else "  OUT %d" % ceili(OUT_LIMIT - defender_out_time)) if defender_out_time > 0.0 else ""
-	score_board.text = "ATTACKER  %d%s\nDEFENDER  %d%s\nTURN  %s  %d/%d\nAI  %s" % [score_hit, attacker_warning, score_block, defender_warning, "AI ATTACK" if defending else "YOU ATTACK", strikes_used, STRIKES_PER_TURN, AI_DIFFICULTY]
+	score_board.text = "VAHID  %d%s\nPEDRAM  %d%s\nTURN  %s  %d/%d\nAI  %s" % [score_hit, attacker_warning, score_block, defender_warning, "PEDRAM" if defending else "VAHID", strikes_used, STRIKES_PER_TURN, AI_DIFFICULTY]
+	update_fighter_names()
 	update_visuals()
 	update_camera(delta)
-	header.text = BUILD_LABEL + "  |  " + ("DEFENSE TEST" if defending else "ATTACK TEST") + "  |  Hit: %d  Block: %d" % [score_hit, score_block]
+	header.text = BUILD_LABEL + "  |  " + ("VAHID DEFENDS / PEDRAM ATTACKS" if defending else "VAHID ATTACKS / PEDRAM DEFENDS")
 	detail.text = "Target: %s leg | Distance: %.2f m | Guard: %.2f | Window: %.2f s | Yellow dot = tip" % [("RIGHT / red R / J" if strike_side > 0 else "LEFT / blue L / L"), defender_x - attack_x, guard_shift, guard_window]
