@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v4.6 - visible body motion"
+const BUILD_LABEL := "v4.7 - zagros visual pass"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -74,7 +74,7 @@ var last_defender_x := DEF_X
 func material(c: Color) -> StandardMaterial3D:
  var m := StandardMaterial3D.new()
  m.albedo_color = c
- m.roughness = 0.8
+ m.roughness = 0.87
  return m
 
 func block(parent: Node3D, name: String, size: Vector3, at: Vector3, color: Color) -> MeshInstance3D:
@@ -132,8 +132,8 @@ func person(name: String, x: float, face_right: bool) -> Node3D:
  root.name = name
  add_child(root)
  root.position.x = x
- var cloth := Color(0.86, 0.81, 0.66)
- var black := Color(0.065, 0.07, 0.085)
+ var cloth := Color(0.94, 0.90, 0.77)
+ var black := Color(0.085, 0.083, 0.075)
  var skin := Color(0.65, 0.45, 0.32)
  # Waist pivot: torso, chogha, stripes and head share a single transform.
  var waist := Node3D.new()
@@ -141,6 +141,7 @@ func person(name: String, x: float, face_right: bool) -> Node3D:
  root.add_child(waist)
  waist.position = Vector3(0, 1.14, 0)
  block(waist, "Chogha", Vector3(0.62, 0.90, 0.38), Vector3(0, 0.43, 0), cloth)
+ block(waist, "Chogha collar", Vector3(0.66, 0.10, 0.42), Vector3(0, 0.89, 0), Color(0.72, 0.62, 0.46))
  for off in [-0.18, -0.05, 0.10, 0.22]:
   block(waist, "Stripe", Vector3(0.043, 0.85, 0.39), Vector3(off, 0.43, 0), black)
  for side in [-1.0, 1.0]:
@@ -151,24 +152,50 @@ func person(name: String, x: float, face_right: bool) -> Node3D:
  block(waist, "Nose-facing", Vector3(0.12, 0.11, 0.15), Vector3(0.22 if face_right else -0.22, 1.13, 0.06), skin)
  return root
 
+func add_scenery() -> void:
+ # Decorative landscape only; no collision and no change to strike physics.
+ var rock := material(Color(0.48, 0.39, 0.31))
+ var distant := material(Color(0.61, 0.57, 0.50))
+ for i in range(9):
+  var peak := MeshInstance3D.new()
+  peak.name = "Zagros mountain %d" % i
+  var mesh := PrismMesh.new()
+  mesh.size = Vector3(3.6 + float(i % 3) * 0.7, 2.0 + float((i * 3) % 5) * 0.34, 1.6)
+  peak.mesh = mesh
+  peak.material_override = distant if i % 2 == 0 else rock
+  peak.position = Vector3(-14.0 + float(i) * 3.5, 0.65, -8.5 - float(i % 3) * 1.5)
+  add_child(peak)
+ for i in range(26):
+  var stone := MeshInstance3D.new()
+  stone.name = "Ground pebble %d" % i
+  var pebble := SphereMesh.new()
+  pebble.radius = 0.09 + float(i % 4) * 0.025
+  pebble.height = 0.10
+  stone.mesh = pebble
+  stone.material_override = rock
+  stone.position = Vector3(-7.5 + float((i * 17) % 29) * 0.53, 0.015, -2.6 + float((i * 11) % 17) * 0.32)
+  add_child(stone)
+
 func _ready() -> void:
  var world := WorldEnvironment.new()
  var env := Environment.new()
  env.background_mode = Environment.BG_COLOR
- env.background_color = Color(0.48, 0.27, 0.64) # V3 connection test: unmistakable purple sky
+ env.background_color = Color(0.55, 0.74, 0.85) # Natural daylight instead of test purple
  env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
- env.ambient_light_color = Color(0.85, 0.88, 0.9)
+ env.ambient_light_color = Color(0.82, 0.83, 0.78)
  world.environment = env
  add_child(world)
  var light := DirectionalLight3D.new()
  light.rotation_degrees = Vector3(-55, -30, -20)
- light.light_energy = 1.6
+ light.light_energy = 1.25
+ light.shadow_enabled = true
  add_child(light)
- block(self, "Ground", Vector3(17, 0.12, 7), Vector3(0, -0.08, 0), Color(0.32, 0.51, 0.28))
+ block(self, "Ground", Vector3(17, 0.12, 7), Vector3(0, -0.08, 0), Color(0.62, 0.49, 0.32))
+ add_scenery()
  attacker = person("Attacker facing RIGHT", attack_x, true)
  defender = person("Defender facing LEFT", defender_x, false)
- terkeh = rod(self, "Terkeh attached to raised hands", STICK_RADIUS, Color(0.93, 0.61, 0.20))
- darak = rod(self, "Darak held in defender hand", GUARD_RADIUS, Color(0.27, 0.14, 0.07))
+ terkeh = rod(self, "Terkeh attached to raised hands", STICK_RADIUS, Color(0.88, 0.69, 0.34))
+ darak = rod(self, "Darak held in defender hand", GUARD_RADIUS, Color(0.36, 0.22, 0.12))
  attack_hand_a = block(self, "Attacker left hand", Vector3(0.19, 0.17, 0.17), Vector3.ZERO, Color(0.67, 0.44, 0.29))
  attack_hand_b = block(self, "Attacker right hand", Vector3(0.19, 0.17, 0.17), Vector3.ZERO, Color(0.67, 0.44, 0.29))
  defend_hand = block(self, "Defender upper grip", Vector3(0.22, 0.20, 0.22), Vector3.ZERO, Color(0.67, 0.44, 0.29))
