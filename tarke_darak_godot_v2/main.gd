@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v6.8 - mirrored rear-start arcs"
+const BUILD_LABEL := "v6.9 - soft crouch and waist lean"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -446,8 +446,9 @@ func animate_footwork(character: Node3D, phase: float, motion: float, swing_pose
 	# Feet return to their original local positions when movement stops.
 	var stride := minf(1.0, absf(motion) / 1.8)
 	var accent := sin(swing_pose * PI) if swing_pose > 0.0 else 0.0
-	var bend := smoothstep(0.02, 0.62, swing_pose) if facing > 0.0 else 0.0
-	var lean := 0.12 * bend
+	var bend := smoothstep(0.12, 0.78, swing_pose) if facing > 0.0 else 0.0
+	# Small weight drop and knee flex; preserve the existing rear-start arc.
+	var crouch := 0.13 * bend
 	for child in character.get_children():
 		if not child is Node3D:
 			continue
@@ -460,12 +461,19 @@ func animate_footwork(character: Node3D, phase: float, motion: float, swing_pose
 			var base_x := facing * 0.08 if n.name.begins_with("Giveh") else 0.0
 			var step := sin(phase + (0.0 if side < 0.0 else PI))
 			n.position.x = base_x + 0.19 * stride * step + facing * 0.08 * accent
-			n.position.y = (0.12 if n.name.begins_with("Giveh") else 0.70) + 0.08 * stride * maxf(0.0, step)
+			if n.name.begins_with("Debit trousers"):
+				# Low-poly knee flex: tilt each leg slightly while the feet stay grounded.
+				n.rotation.z = -facing * 0.17 * bend
+				n.position.y = 0.70 - 0.055 * bend + 0.08 * stride * maxf(0.0, step)
+			else:
+				n.rotation.z = 0.0
+				n.position.y = 0.12 + 0.08 * stride * maxf(0.0, step)
+				n.position.x += facing * 0.035 * bend
 		elif n.name == "WaistJoint":
 			# One anatomical hinge carries clothing, head and shoulders together.
-			n.rotation.z = -facing * (0.05 * stride * sin(phase) + 0.30 * bend)
+			n.rotation.z = -facing * (0.05 * stride * sin(phase) + 0.38 * bend)
 			n.rotation.y = float(strike_side) * 0.28 * bend if facing > 0.0 else 0.0
-			n.position = Vector3(facing * 0.08 * bend, 1.14 - 0.05 * bend, 0.0)
+			n.position = Vector3(facing * 0.08 * bend, 1.14 - crouch, 0.0)
 
 func update_visuals() -> void:
 	attacker.position.x = attack_x
