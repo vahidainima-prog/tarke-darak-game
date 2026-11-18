@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v8.8 - W/S movement, Q/E guard, smooth swap"
+const BUILD_LABEL := "v8.9 - impact reactions, dust and sound"
 const DEF_X := 1.55
 const STRIKES_PER_TURN := 2
 const STRIKE_TIME_LIMIT := 20.0
@@ -62,6 +62,12 @@ var score_board: Label
 var strike_clock_label: Label
 var impact_banner: Label
 var impact_banner_time := 0.0
+var hit_reaction := 0.0
+var block_reaction := 0.0
+var dust_time := 0.0
+var dust_puffs: Array[MeshInstance3D] = []
+var hit_audio: AudioStreamPlayer
+var block_audio: AudioStreamPlayer
 var trail_segments: Array[MeshInstance3D] = []
 var trail_points: Array[Vector3] = []
 var ai_guard_delay := -1.0
@@ -284,6 +290,26 @@ func _ready() -> void:
 	# Leg labels are attached directly to each moving trouser and shoe.
 	terkeh = rod(self, "Terkeh attached to raised hands", STICK_RADIUS, Color(0.88, 0.69, 0.34))
 	darak = rod(self, "Darak held in defender hand", GUARD_RADIUS, Color(0.36, 0.22, 0.12))
+	# Small ground-level dust puffs appear only after confirmed contact.
+	for i in range(5):
+		var puff := MeshInstance3D.new()
+		puff.name = "Impact dust %d" % i
+		var sphere := SphereMesh.new()
+		sphere.radius = 0.09
+		sphere.height = 0.18
+		puff.mesh = sphere
+		puff.material_override = material(Color(0.79, 0.68, 0.49))
+		puff.visible = false
+		add_child(puff)
+		dust_puffs.append(puff)
+	hit_audio = AudioStreamPlayer.new()
+	hit_audio.stream = make_impact_sound(false)
+	hit_audio.volume_db = -9.0
+	add_child(hit_audio)
+	block_audio = AudioStreamPlayer.new()
+	block_audio.stream = make_impact_sound(true)
+	block_audio.volume_db = -9.0
+	add_child(block_audio)
 	tip_debug = MeshInstance3D.new()
 	tip_debug.name = "DEBUG yellow strike tip"
 	var tip_mesh := SphereMesh.new()
@@ -459,6 +485,11 @@ func _input(event: InputEvent) -> void:
 				score_block = 0
 				trail_points.clear()
 				impact_banner_time = 0.0
+				hit_reaction = 0.0
+				block_reaction = 0.0
+				dust_time = 0.0
+				for puff in dust_puffs:
+					puff.visible = false
 				attacker_out_time = 0.0
 				defender_out_time = 0.0
 				attacker_out_penalized = false
@@ -489,6 +520,47 @@ func _input(event: InputEvent) -> void:
 			KEY_SPACE:
 				if not defending and swap_time <= 0.0 and not pending_turn_change and swing < 0.0 and recovery < 0.0 and opponent_delay < 0.0 and fake_timer <= 0.0:
 					start_swing()
+
+func make_impact_sound(blocked: bool) -> AudioStreamWAV:
+	# Procedural, original short wooden tap; no external audio files.
+	var rate := 22050
+	var samples := 4400 if blocked else 5800
+	var data := PackedByteArray()
+	data.resize(samples * 2)
+	for i in range(samples):
+		var t := float(i) / float(rate)
+		var envelope := exp(-t * (27.0 if blocked else 19.0))
+		var frequency := 490.0 if blocked else 225.0
+		var tone := sin(TAU * frequency * t) * 0.70 + sin(TAU * frequency * 1.82 * t) * 0.22
+		var noise := (randf() * 2.0 - 1.0) * (0.18 if blocked else 0.30)
+		var value := int(clampf((tone + noise) * envelope * 0.65, -1.0, 1.0) * 32767.0)
+		if value < 0:
+			value += 65536
+		data[i * 2] = value & 255
+		data[i * 2 + 1] = (value >> 8) & 255
+	var wav := AudioStreamWAV.new()
+	wav.format = AudioStreamWAV.FORMAT_16_BITS
+	wav.mix_rate = rate
+	wav.stereo = false
+	wav.data = data
+	return wav
+
+
+func trigger_contact(blocked: bool) -> void:
+	if blocked:
+		block_reaction = 0.38
+		if block_audio != null:
+			block_audio.play()
+	else:
+		hit_reaction = 0.46
+		if hit_audio != null:
+			hit_audio.play()
+	dust_time = 0.42
+	for i in range(dust_puffs.size()):
+		var puff := dust_puffs[i]
+		puff.position = Vector3(defender_x - 0.12 + float(i - 2) * 0.13, 0.12, -float(strike_side) * 0.34)
+		puff.visible = true
+
 
 func show_impact(message: String, color: Color) -> void:
 	impact_banner.text = message
@@ -688,6 +760,13 @@ func update_visuals() -> void:
 		pose = lerpf(recovery_from, 0.0, smoothstep(0.0, 1.0, recovery))
 	animate_footwork(attacker, attack_step_phase, attack_x - last_attack_x, pose, 1.0)
 	animate_footwork(defender, defend_step_phase, defender_x - last_defender_x, 0.0, -1.0)
+	# Brief non-graphic recoil on confirmed hit, and a smaller bracing
+	# response on a successful parry. Both fade back to neutral.
+	var reaction_strength := sin(PI * hit_reaction / 0.46) if hit_reaction > 0.0 else 0.0
+	var brace_strength := sin(PI * block_reaction / 0.38) if block_reaction > 0.0 else 0.0
+	var defender_waist: Node3D = defender.get_node("WaistJoint")
+	defender_waist.rotation.z = -0.18 * reaction_strength + 0.10 * brace_strength
+	defender_waist.position.x = 0.10 * reaction_strength - 0.04 * brace_strength
 	var bend_amount := smoothstep(0.02, 0.62, pose)
 	var shoulder_shift := Vector3(0.10 * bend_amount, -0.12 * bend_amount, 0.0)
 	var ends := strike_ends(pose)
@@ -726,6 +805,9 @@ func update_visuals() -> void:
 	var right_elbow_hint: Vector3 = Vector3(0.65, -0.12, 1.30) if strike_side < 0 else Vector3(0.50, -0.25, 0.85)
 	place_two_bone_arm(attack_arm_b, attack_forearm_b, attack_elbow_b, Vector3(attack_x + 0.20, 1.92, 0.16) + shoulder_shift, attack_hand_b.position, right_elbow_hint, strike_extension if strike_side < 0 else 0.0)
 	var g := guard_ends()
+	if brace_strength > 0.0:
+		g[0] += Vector3(-0.10 * brace_strength, 0.09 * brace_strength, 0.0)
+		g[1] += Vector3(0.05 * brace_strength, 0.03 * brace_strength, 0.0)
 	place_rod(darak, g[0], g[1])
 	defend_hand.position = g[0].lerp(g[1], 0.70)
 	defend_hand_b.position = g[0].lerp(g[1], 0.48)
@@ -807,6 +889,17 @@ func _physics_process(delta: float) -> void:
 		defender.position = swap_defender_from.lerp(Vector3(defender_x, 0.0, 0.0), progress)
 		update_camera(delta)
 		return
+	hit_reaction = maxf(0.0, hit_reaction - delta)
+	block_reaction = maxf(0.0, block_reaction - delta)
+	dust_time = maxf(0.0, dust_time - delta)
+	for i in range(dust_puffs.size()):
+		var puff := dust_puffs[i]
+		puff.visible = dust_time > 0.0
+		if puff.visible:
+			var progress := 1.0 - dust_time / 0.42
+			puff.position.y = 0.12 + progress * 0.32
+			puff.position.x += float(i - 2) * delta * 0.18
+			puff.scale = Vector3.ONE * (1.0 + progress * 1.4)
 	var previous_guard := guard_ends()
 	fake_timer = maxf(0.0, fake_timer - delta)
 	fake_cooldown = maxf(0.0, fake_cooldown - delta)
@@ -917,6 +1010,7 @@ func _physics_process(delta: float) -> void:
 				score_hit += 100
 			else:
 				score_block += 100
+			trigger_contact(true)
 			show_impact("BLOCK +100", Color(0.34, 0.83, 1.0))
 			say("SUCCESSFUL DEFENSE: correct side and timing! Defender +100")
 			impact_hold = 0.22
@@ -930,6 +1024,7 @@ func _physics_process(delta: float) -> void:
 				score_block += 100
 			else:
 				score_hit += 100
+			trigger_contact(false)
 			show_impact("HIT +100", Color(1.0, 0.83, 0.30))
 			say("LEGAL CONTACT: terkeh reached below-knee target. Attacker +100")
 			impact_hold = 0.19
