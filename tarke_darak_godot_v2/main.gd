@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v4.8 - forward-facing stick tip"
+const BUILD_LABEL := "v4.9 - forward arm and active guard"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -301,7 +301,7 @@ func _input(event: InputEvent) -> void:
     if swing < 0.0 and recovery < 0.0 and opponent_delay < 0.0:
      if defending:
       opponent_delay = 0.55
-      say("Watch the opponent. W/S shifts the held darak.")
+      say("Watch the opponent. W/S moves the darak across the leg target.")
      else:
       start_swing()
 
@@ -336,8 +336,8 @@ func strike_ends(p: float) -> Array[Vector3]:
 func guard_ends() -> Array[Vector3]:
  # One grip always follows the defender's hand. The lower end pivots across the shins.
  # Guard is held slightly ahead of the defender (toward the attacker) and camera.
- var grip := Vector3(defender_x - 0.48, 1.39, 0.18)
- var bottom := Vector3(defender_x - 0.69 + guard_shift, 0.10, 0.18)
+ var grip := Vector3(defender_x - 0.48, 1.39, 0.18 + guard_shift * 0.20)
+ var bottom := Vector3(defender_x - 0.69 + guard_shift * 0.55, 0.10, 0.18 + guard_shift * 0.62)
  var top := grip + (grip - bottom).normalized() * 0.55
  return [bottom, top]
 
@@ -400,12 +400,12 @@ func update_visuals() -> void:
  # driving hand stays at its near-end grip; the other drops beside the torso.
  # Photo reference: wide overhead grip at rest, one controlling hand at the
  # near end in the final bent pose, opposite elbow folded toward the waist.
- var left_grip := a + direction * 0.20
+ var left_grip := a + direction * lerpf(0.20, 0.57, smoothstep(0.0, 0.35, pose))
  # The driving hand must grip the BACK end, not follow the striking tip.
  # For the right-hand strike, slide the right grip from its overhead
  # position to the butt while the left hand releases.
  var right_ready_grip := b - direction * 0.20
- var right_drive_grip := a + direction * 0.20
+ var right_drive_grip := a + direction * 0.57
  var grip_transfer := smoothstep(0.0, 0.24, pose) if strike_side < 0 else 0.0
  var right_grip := right_ready_grip.lerp(right_drive_grip, grip_transfer)
  var left_rest := Vector3(attack_x - 0.15 + 0.16 * bend_amount, 1.44 - 0.35 * bend_amount, -0.50)
@@ -413,8 +413,8 @@ func update_visuals() -> void:
  # Keep the driving hand on its own end throughout the swing.
  attack_hand_a.position = left_grip.lerp(left_rest, release_blend if strike_side < 0 else 0.0)
  attack_hand_b.position = right_grip.lerp(right_rest, release_blend if strike_side > 0 else 0.0)
- place_two_bone_arm(attack_arm_a, attack_forearm_a, attack_elbow_a, Vector3(attack_x + 0.20, 1.92, -0.14) + shoulder_shift, attack_hand_a.position, Vector3(-0.6, 0.1, -0.7))
- place_two_bone_arm(attack_arm_b, attack_forearm_b, attack_elbow_b, Vector3(attack_x + 0.20, 1.92, 0.16) + shoulder_shift, attack_hand_b.position, Vector3(-0.6, 0.1, 0.7))
+ place_two_bone_arm(attack_arm_a, attack_forearm_a, attack_elbow_a, Vector3(attack_x + 0.20, 1.92, -0.14) + shoulder_shift, attack_hand_a.position, Vector3(0.65, -0.18, -0.65))
+ place_two_bone_arm(attack_arm_b, attack_forearm_b, attack_elbow_b, Vector3(attack_x + 0.20, 1.92, 0.16) + shoulder_shift, attack_hand_b.position, Vector3(0.65, -0.18, 0.65))
  var g := guard_ends()
  place_rod(darak, g[0], g[1])
  defend_hand.position = g[0].lerp(g[1], 0.70)
@@ -541,4 +541,4 @@ func _physics_process(delta: float) -> void:
  last_defender_x = defender_x - defend_velocity / 1.8
  update_visuals()
  header.text = BUILD_LABEL + "  |  " + ("DEFENSE TEST" if defending else "ATTACK TEST") + "  |  Hit: %d  Block: %d" % [score_hit, score_block]
- detail.text = "Target: %s leg  |  Distance: %.2f m  |  Darak offset: %.2f m  |  J/L: switch side" % [("near" if strike_side > 0 else "far"), defender_x - attack_x, guard_shift]
+ detail.text = "Target: %s leg  |  Distance: %.2f m  |  Guard side: %.2f m  |  W/S: defend" % [("near" if strike_side > 0 else "far"), defender_x - attack_x, guard_shift]
