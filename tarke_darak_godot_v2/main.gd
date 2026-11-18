@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v6.3 - forward bending elbows"
+const BUILD_LABEL := "v6.4 - extending striking arm"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -111,7 +111,7 @@ func place_rod(n: MeshInstance3D, a: Vector3, b: Vector3) -> void:
 		n.quaternion = Quaternion(Vector3.UP, v.normalized())
 	(n.mesh as CylinderMesh).height = maxf(v.length(), 0.01)
 
-func place_two_bone_arm(upper: MeshInstance3D, lower: MeshInstance3D, elbow_mesh: MeshInstance3D, shoulder: Vector3, hand: Vector3, elbow_hint: Vector3) -> void:
+func place_two_bone_arm(upper: MeshInstance3D, lower: MeshInstance3D, elbow_mesh: MeshInstance3D, shoulder: Vector3, hand: Vector3, elbow_hint: Vector3, extension: float = 0.0) -> void:
 	# Analytic two-bone IK: law of cosines with a consistent elbow bend plane.
 	# The hand remains locked to the grip; the elbow is solved, not drawn as a straight stick.
 	var upper_len := 0.90
@@ -127,6 +127,9 @@ func place_two_bone_arm(upper: MeshInstance3D, lower: MeshInstance3D, elbow_mesh
 	var along := (reach * reach + upper_len * upper_len - lower_len * lower_len) / (2.0 * reach)
 	var height := sqrt(maxf(0.0, upper_len * upper_len - along * along))
 	var elbow := shoulder + forward * along + bend * height
+	# At contact the striking arm opens forward rather than folding backward.
+	# Keep hand and staff exactly in their existing outside-leg trajectory.
+	elbow = elbow.lerp(shoulder.lerp(hand, 0.5), clampf(extension, 0.0, 0.94))
 	place_rod(upper, shoulder, elbow)
 	place_rod(lower, elbow, hand)
 	elbow_mesh.position = elbow
@@ -489,10 +492,11 @@ func update_visuals() -> void:
 	# Keep the driving hand at its assigned end; only the opposite hand releases.
 	attack_hand_a.position = left_grip.lerp(left_rest, release_blend if strike_side < 0 else 0.0)
 	attack_hand_b.position = right_grip.lerp(right_rest, release_blend if strike_side > 0 else 0.0)
+	var strike_extension := smoothstep(0.30, 0.82, pose) * 0.94
 	var left_elbow_hint: Vector3 = Vector3(1.15, -0.18, -0.48) if strike_side > 0 else Vector3(0.78, -0.32, -0.75)
-	place_two_bone_arm(attack_arm_a, attack_forearm_a, attack_elbow_a, Vector3(attack_x + 0.20, 1.92, -0.14) + shoulder_shift, attack_hand_a.position, left_elbow_hint)
+	place_two_bone_arm(attack_arm_a, attack_forearm_a, attack_elbow_a, Vector3(attack_x + 0.20, 1.92, -0.14) + shoulder_shift, attack_hand_a.position, left_elbow_hint, strike_extension if strike_side > 0 else 0.0)
 	var right_elbow_hint: Vector3 = Vector3(1.15, -0.18, 0.48) if strike_side < 0 else Vector3(0.78, -0.32, 0.75)
-	place_two_bone_arm(attack_arm_b, attack_forearm_b, attack_elbow_b, Vector3(attack_x + 0.20, 1.92, 0.16) + shoulder_shift, attack_hand_b.position, right_elbow_hint)
+	place_two_bone_arm(attack_arm_b, attack_forearm_b, attack_elbow_b, Vector3(attack_x + 0.20, 1.92, 0.16) + shoulder_shift, attack_hand_b.position, right_elbow_hint, strike_extension if strike_side < 0 else 0.0)
 	var g := guard_ends()
 	place_rod(darak, g[0], g[1])
 	defend_hand.position = g[0].lerp(g[1], 0.70)
