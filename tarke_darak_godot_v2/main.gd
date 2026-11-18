@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v6.1 - outside-lane waypoint strike"
+const BUILD_LABEL := "v6.2 - typed Godot 4 strike arrays"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -377,8 +377,8 @@ func strike_ends(p: float) -> Array[Vector3]:
 	var ready_center := Vector3(attack_x + 0.56, 2.48, 0.0)
 	var ready_a := ready_center + Vector3(0.0, 0.0, -STICK_LENGTH * 0.5)
 	var ready_b := ready_center + Vector3(0.0, 0.0, STICK_LENGTH * 0.5)
-	var ready_butt := ready_a if strike_side > 0 else ready_b
-	var ready_tip := ready_b if strike_side > 0 else ready_a
+	var ready_butt: Vector3 = ready_a if strike_side > 0 else ready_b
+	var ready_tip: Vector3 = ready_b if strike_side > 0 else ready_a
 	# First move the TIP into the outside lane while still near attacker.
 	# This avoids cutting through the middle of the defender on the way down.
 	var waypoint_butt := Vector3(attack_x + 0.24, 1.85, side * 1.18)
@@ -402,7 +402,14 @@ func strike_ends(p: float) -> Array[Vector3]:
 	# Rebuild a constant-length staff from the driving-hand end.
 	var axis := (tip - butt).normalized()
 	tip = butt + axis * STICK_LENGTH
-	return [butt, tip] if strike_side > 0 else [tip, butt]
+	var endpoints: Array[Vector3] = []
+	if strike_side > 0:
+		endpoints.append(butt)
+		endpoints.append(tip)
+	else:
+		endpoints.append(tip)
+		endpoints.append(butt)
+	return endpoints
 
 func strike_tip(p: float) -> Vector3:
 	var ends := strike_ends(p)
@@ -518,10 +525,10 @@ func check_sweep(previous: float, current: float, previous_guard: Array[Vector3]
 		var alpha := float(i) / float(steps)
 		var guard_a := previous_guard[0].lerp(current_guard[0], alpha)
 		var guard_b := previous_guard[1].lerp(current_guard[1], alpha)
-		var tip := s[1] if strike_side > 0 else s[0]
+		var tip: Vector3 = s[1] if strike_side > 0 else s[0]
 		# Only the forward portion can be blocked; a distant or rear section
 		# touching the guard must not count as a successful defense.
-		var forward_start := s[0].lerp(s[1], 0.76) if strike_side > 0 else s[1].lerp(s[0], 0.76)
+		var forward_start: Vector3 = s[0].lerp(s[1], 0.76) if strike_side > 0 else s[1].lerp(s[0], 0.76)
 		if segment_distance(forward_start, tip, guard_a, guard_b) <= STICK_RADIUS + GUARD_RADIUS + 0.025:
 			return "block"
 		# Each strike is checked only against its selected near/far leg lane.
