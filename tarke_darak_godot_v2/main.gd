@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v7.2 - timed left-right darak defense"
+const BUILD_LABEL := "v7.3 - angled guard and fake strike"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -42,6 +42,8 @@ var guard_target := 0.0
 var guard_window := 0.0
 var guard_cooldown := 0.0
 var guard_side := 0
+var fake_timer := 0.0
+var fake_cooldown := 0.0
 var score_hit := 0
 var score_block := 0
 var status: Label
@@ -296,7 +298,7 @@ func _ready() -> void:
 	detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(detail)
 	var footer := Label.new()
-	footer.text = "A/D: move | TAB: switch | C: camera | DEFENSE W=blue L, S=red R (timed) | J/L: attack side | SPACE: swing | R: reset"
+	footer.text = "A/D move | TAB switch | W blue L / S red R guard | J/L attack side | F fake | SPACE attack | R reset"
 	footer.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	footer.offset_top = -43
 	footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -331,6 +333,7 @@ func _input(event: InputEvent) -> void:
 				guard_window = 0.0
 				guard_cooldown = 0.0
 				guard_side = 0
+				fake_timer = 0.0
 				say("DEFENSE: A/D move defender; W/S steer darak; SPACE starts opponent." if defending else "ATTACK: A/D move; J/L feint; SPACE swing.")
 			KEY_R:
 				defending = false
@@ -348,6 +351,8 @@ func _input(event: InputEvent) -> void:
 				guard_window = 0.0
 				guard_cooldown = 0.0
 				guard_side = 0
+				fake_timer = 0.0
+				fake_cooldown = 0.0
 				feint_depth = 0.0
 				feint_target = 0.0
 				score_hit = 0
@@ -363,6 +368,11 @@ func _input(event: InputEvent) -> void:
 					strike_side = -1
 					feint_target = FEINT_DEPTH_LIMIT
 					say("L: RIGHT-hand drive -> defender LEFT / blue L leg.")
+			KEY_F:
+				if not defending and swing < 0.0 and recovery < 0.0 and fake_cooldown <= 0.0:
+					fake_timer = 0.48
+					fake_cooldown = 1.10
+					say("FEINT! A fake windup with no hit. Follow with SPACE.")
 			KEY_W, KEY_S:
 				if defending and guard_cooldown <= 0.0:
 					guard_side = 1 if event.keycode == KEY_W else -1
@@ -371,7 +381,7 @@ func _input(event: InputEvent) -> void:
 					guard_cooldown = 0.60
 					say("Darak: LEFT / blue L" if guard_side > 0 else "Darak: RIGHT / red R")
 			KEY_SPACE:
-				if swing < 0.0 and recovery < 0.0 and opponent_delay < 0.0:
+				if swing < 0.0 and recovery < 0.0 and opponent_delay < 0.0 and fake_timer <= 0.0:
 					if defending:
 						opponent_delay = 0.72
 						strike_side = -1 if randi_range(0, 1) == 0 else 1
@@ -384,6 +394,7 @@ func _input(event: InputEvent) -> void:
 						start_swing()
 
 func start_swing() -> void:
+	fake_timer = 0.0
 	swing = 0.0
 	swing_speed = 0.0
 	swing_finished = false
@@ -455,10 +466,11 @@ func strike_tip(p: float) -> Vector3:
 	return ends[1] if strike_side > 0 else ends[0]
 
 func guard_ends() -> Array[Vector3]:
-	# Vertical two-hand game guard: W camera-side (+Z), S far-side (-Z).
-	var lane := guard_shift * 0.47
-	var bottom := Vector3(defender_x - 0.32, 0.10, lane)
-	var top := Vector3(defender_x - 0.34, 1.76, lane)
+	# The lower end stays near the shins while the upper end leans
+	# dramatically into the chosen incoming lane. Both hands track it.
+	var side := guard_shift
+	var bottom := Vector3(defender_x - 0.35, 0.12, side * 0.10)
+	var top := Vector3(defender_x - 0.50, 1.67, side * 1.15)
 	var endpoints: Array[Vector3] = [bottom, top]
 	return endpoints
 
@@ -499,6 +511,9 @@ func update_visuals() -> void:
 	attacker.position.x = attack_x
 	defender.position.x = defender_x
 	var pose := 0.0
+	if fake_timer > 0.0 and swing < 0.0:
+		var fake_phase := 1.0 - fake_timer / 0.48
+		pose = 0.31 * sin(fake_phase * PI)
 	if swing >= 0.0:
 		pose = swing
 	elif recovery >= 0.0:
@@ -517,13 +532,15 @@ func update_visuals() -> void:
 	var direction := (b - a).normalized()
 	# In ready stance both hands hold near opposite ends of the horizontal rod.
 	# During the swing the selected hand releases and returns toward the torso.
-	var releasing := swing >= 0.0 or recovery >= 0.0
-	var phase := swing if swing >= 0.0 else (recovery_from if recovery >= 0.0 else 0.0)
+	var releasing := swing >= 0.0 or recovery >= 0.0 or fake_timer > 0.0
+	var phase := swing if swing >= 0.0 else (recovery_from if recovery >= 0.0 else pose)
 	var release_target := 0.0
 	if releasing:
 		release_target = smoothstep(0.0, 0.12, phase)
 	if recovery >= 0.0:
 		release_target *= 1.0 - smoothstep(0.45, 0.95, recovery)
+	if fake_timer > 0.0:
+		release_target *= smoothstep(0.0, 0.10, pose)
 	release_blend = release_target
 	# The rod is ONE straight horizontal bar in the ready pose.
 	# Each hand grips its OWN opposite end; never slide hands together.
@@ -608,6 +625,8 @@ func update_camera(delta: float) -> void:
 
 func _physics_process(delta: float) -> void:
 	var previous_guard := guard_ends()
+	fake_timer = maxf(0.0, fake_timer - delta)
+	fake_cooldown = maxf(0.0, fake_cooldown - delta)
 	var before_attack := attack_x
 	var before_defender := defender_x
 	if swing < 0.0 and recovery < 0.0 and not defending:
