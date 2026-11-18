@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v5.1 - horizontal two-end grip"
+const BUILD_LABEL := "v5.2 - across-shoulders ready grip"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -320,23 +320,27 @@ func start_swing() -> void:
  say("Swing: physical terkeh sweeps toward the defender.")
 
 func strike_ends(p: float) -> Array[Vector3]:
- # The visible free tip travels from above the head to the opponent's lower leg.
- # Maximum reach is fixed: moving closer matters, and distant swings still miss.
+ # Ready stance: the staff runs ACROSS the shoulders (Z axis), not
+ # from behind the head toward the face (X axis).
+ # The hands are on opposite sides of the head, at the two rod ends.
  var t := clampf(p, 0.0, 1.0)
+ var turn := smoothstep(0.03, 0.48, t)
  var arc := smoothstep(0.0, 1.0, t)
+ var ready_center := Vector3(attack_x + 0.03, 2.48, 0.0)
+ var ready_direction := Vector3(0.0, 0.0, 1.0)
  var distance := defender_x - attack_x
  var tip_reach := minf(2.02, distance - 0.18)
- # Opposite-hand strikes target different legs rather than the same centerline.
  var leg_offset := -0.18 if strike_side > 0 else 0.18
- var tip_x := attack_x + lerpf(STICK_LENGTH * 0.5, tip_reach + leg_offset, arc)
+ var tip_x := attack_x + lerpf(1.125, tip_reach + leg_offset, arc)
  var tip_y := lerpf(2.48, 0.43, smoothstep(0.0, 0.75, t))
- # Cross the defender's guard plane on the way to the leg plane.
  var tip_z := lerpf(-0.28, float(strike_side) * 0.12, arc) + float(strike_side) * 0.46 * sin(PI * t)
- var angle := lerpf(0.0, -0.94, arc)
- var direction := Vector3(cos(angle), sin(angle), float(strike_side) * 0.55 * sin(PI * t)).normalized()
- var tip := Vector3(tip_x, tip_y, tip_z)
- var butt := tip - direction * STICK_LENGTH
- return [butt, tip]
+ var angle := lerpf(0.0, -0.38, arc)
+ var strike_direction := Vector3(cos(angle), sin(angle), float(strike_side) * 0.40 * sin(PI * t)).normalized()
+ var strike_tip := Vector3(tip_x, tip_y, tip_z)
+ var strike_center := strike_tip - strike_direction * (STICK_LENGTH * 0.5)
+ var center := ready_center.lerp(strike_center, turn)
+ var direction := ready_direction.lerp(strike_direction, turn).normalized()
+ return [center - direction * (STICK_LENGTH * 0.5), center + direction * (STICK_LENGTH * 0.5)]
 
 func guard_ends() -> Array[Vector3]:
  # One grip always follows the defender's hand. The lower end pivots across the shins.
@@ -406,8 +410,8 @@ func update_visuals() -> void:
  # A small inset keeps the hands visually on the wood.
  var left_grip := a + direction * 0.11
  var right_grip := b - direction * 0.11
- var left_rest := Vector3(attack_x - 0.15 + 0.16 * bend_amount, 1.44 - 0.35 * bend_amount, -0.50)
- var right_rest := Vector3(attack_x - 0.13 + 0.16 * bend_amount, 1.44 - 0.35 * bend_amount, 0.53)
+ var left_rest := Vector3(attack_x + 0.10 + 0.16 * bend_amount, 1.44 - 0.35 * bend_amount, -0.50)
+ var right_rest := Vector3(attack_x + 0.10 + 0.16 * bend_amount, 1.44 - 0.35 * bend_amount, 0.53)
  # Keep the driving hand at its assigned end; only the opposite hand releases.
  attack_hand_a.position = left_grip.lerp(left_rest, release_blend if strike_side < 0 else 0.0)
  attack_hand_b.position = right_grip.lerp(right_rest, release_blend if strike_side > 0 else 0.0)
