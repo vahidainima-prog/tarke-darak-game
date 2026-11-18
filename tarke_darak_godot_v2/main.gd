@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v9.1 - rounded fighter models"
+const BUILD_LABEL := "v9.2 - late cancel feints"
 const DEF_X := 1.55
 const STRIKES_PER_TURN := 2
 const STRIKE_TIME_LIMIT := 20.0
@@ -50,7 +50,11 @@ var guard_target := 0.0
 var guard_window := 0.0
 var guard_cooldown := 0.0
 var guard_side := 0
+const FEINT_DURATION := 0.64
+const FEINT_PEAK := 0.73
 var fake_timer := 0.0
+var feint_guard_bait := false
+var ai_guard_exposed := 0.0
 var fake_cooldown := 0.0
 var score_hit := 0
 var score_block := 0
@@ -580,9 +584,9 @@ func _input(event: InputEvent) -> void:
 					say("L: RIGHT-hand drive -> defender LEFT / blue L leg.")
 			KEY_F:
 				if not defending and swap_time <= 0.0 and not pending_turn_change and swing < 0.0 and recovery < 0.0 and fake_cooldown <= 0.0:
-					fake_timer = 0.48
+					fake_timer = FEINT_DURATION
+					feint_guard_bait = false
 					fake_cooldown = 1.10
-					say("FEINT! A fake windup with no hit. Follow with SPACE.")
 			KEY_Q, KEY_E:
 				if defending and swap_time <= 0.0 and guard_cooldown <= 0.0:
 					guard_side = 1 if event.keycode == KEY_Q else -1
@@ -699,7 +703,7 @@ func start_swing() -> void:
 		pending_turn_change = true
 	if not defending:
 		# AI reads the windup with imperfect accuracy and variable reaction.
-		ai_guard_delay = randf_range(0.18, 0.40) if randf() < ai_guard_chance else -1.0
+		ai_guard_delay = randf_range(0.18, 0.40) if ai_guard_exposed <= 0.0 and randf() < ai_guard_chance else -1.0
 		ai_guard_side = -strike_side if randf() < 0.82 else strike_side
 		guard_window = 0.0
 		guard_cooldown = 0.0
@@ -825,8 +829,8 @@ func update_visuals() -> void:
 	defender.position.x = defender_x
 	var pose := 0.0
 	if fake_timer > 0.0 and swing < 0.0:
-		var fake_phase := 1.0 - fake_timer / 0.48
-		pose = 0.31 * sin(fake_phase * PI)
+		var fake_phase := 1.0 - fake_timer / FEINT_DURATION
+		pose = FEINT_PEAK * smoothstep(0.0, 0.62, fake_phase) if fake_phase < 0.62 else FEINT_PEAK * (1.0 - smoothstep(0.62, 1.0, fake_phase))
 	if swing >= 0.0:
 		pose = swing
 	elif recovery >= 0.0:
@@ -975,6 +979,18 @@ func _physics_process(delta: float) -> void:
 			puff.scale = Vector3.ONE * (1.0 + progress * 1.4)
 	var previous_guard := guard_ends()
 	fake_timer = maxf(0.0, fake_timer - delta)
+	ai_guard_exposed = maxf(0.0, ai_guard_exposed - delta)
+	if fake_timer > 0.0 and not defending and not feint_guard_bait:
+		if 1.0 - fake_timer / FEINT_DURATION >= 0.28:
+			feint_guard_bait = true
+			if randf() < 0.55:
+				guard_side = -strike_side
+				guard_target = float(guard_side)
+				guard_window = 0.26
+				guard_cooldown = 0.80
+				ai_guard_exposed = 0.85
+	if fake_timer <= 0.0:
+		feint_guard_bait = false
 	fake_cooldown = maxf(0.0, fake_cooldown - delta)
 	impact_banner_time = maxf(0.0, impact_banner_time - delta)
 	if impact_banner != null:
@@ -1051,9 +1067,9 @@ func _physics_process(delta: float) -> void:
 			if ai_attack_wait <= 0.0:
 				if not ai_fake_used and randf() < 0.30:
 					ai_fake_used = true
-					fake_timer = 0.48
+					strike_side = -1 if randi_range(0, 1) == 0 else 1
+					fake_timer = FEINT_DURATION
 					ai_attack_wait = 0.72
-					say("AI FEINT: watch for the real strike!")
 				else:
 					strike_side = -1 if randi_range(0, 1) == 0 else 1
 					ai_attack_wait = randf_range(1.0, 1.65)
