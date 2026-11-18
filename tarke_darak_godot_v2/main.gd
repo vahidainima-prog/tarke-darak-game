@@ -2,9 +2,10 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v8.4 - fair swing trails and impact feedback"
+const BUILD_LABEL := "v8.5 - adaptive AI and strike timer"
 const DEF_X := 1.55
 const STRIKES_PER_TURN := 2
+const STRIKE_TIME_LIMIT := 20.0
 const AI_DIFFICULTY := "MEDIUM"
 const ARENA_LEFT := -4.30
 const ARENA_RIGHT := 3.30
@@ -69,6 +70,9 @@ var pending_turn_change := false
 var ai_attack_wait := 0.95
 var ai_fake_wait := 0.0
 var ai_fake_used := false
+var strike_time_left := STRIKE_TIME_LIMIT
+var ai_step_target := 2.10
+var ai_step_wait := 0.0
 var status: Label
 var header: Label
 var detail: Label
@@ -404,6 +408,8 @@ func _input(event: InputEvent) -> void:
 				ai_attack_wait = 0.95
 				ai_fake_wait = 0.0
 				ai_fake_used = false
+				strike_time_left = STRIKE_TIME_LIMIT
+				ai_step_wait = 0.0
 				attack_x = -2.7
 				defender_x = DEF_X
 				swing = -1.0
@@ -481,11 +487,29 @@ func update_swing_trail() -> void:
 			place_rod(segment, trail_points[i], trail_points[i + 1])
 
 
+func change_turn() -> void:
+	pending_turn_change = false
+	strikes_used = 0
+	defending = not defending
+	strike_time_left = STRIKE_TIME_LIMIT
+	guard_shift = 0.0
+	guard_velocity = 0.0
+	guard_target = 0.0
+	guard_window = 0.0
+	guard_side = 0
+	ai_guard_delay = -1.0
+	ai_attack_wait = 1.15
+	ai_fake_used = false
+	ai_step_wait = 0.0
+	say("YOUR DEFENSE TURN: W/S guard against AI." if defending else "YOUR ATTACK TURN: J/L choose side, SPACE strike.")
+
+
 func start_swing() -> void:
 	trail_points.clear()
 	if strikes_used >= STRIKES_PER_TURN:
 		return
 	strikes_used += 1
+	strike_time_left = STRIKE_TIME_LIMIT
 	if strikes_used >= STRIKES_PER_TURN:
 		pending_turn_change = true
 	if not defending:
@@ -754,6 +778,18 @@ func _physics_process(delta: float) -> void:
 			guard_target = 0.0
 		var ai_weight := 1.0 - exp(-24.0 * delta)
 		guard_shift = lerpf(guard_shift, guard_target, ai_weight)
+	# Each 20-second timeout consumes exactly one unused strike.
+	if swing < 0.0 and recovery < 0.0 and not pending_turn_change:
+		strike_time_left = maxf(0.0, strike_time_left - delta)
+		if strike_time_left <= 0.0:
+			strikes_used += 1
+			show_impact("TIME OUT - ONE STRIKE LOST", Color(1.0, 0.75, 0.32))
+			if strikes_used >= STRIKES_PER_TURN:
+				change_turn()
+			else:
+				strike_time_left = STRIKE_TIME_LIMIT
+				ai_attack_wait = 0.85
+				say("Time expired: one strike lost. Next chance!")
 	var before_attack := attack_x
 	var before_defender := defender_x
 	if swing < 0.0 and recovery < 0.0 and not defending and not pending_turn_change:
@@ -783,11 +819,21 @@ func _physics_process(delta: float) -> void:
 			opponent_delay -= delta
 			if opponent_delay < 0.0:
 				start_swing()
+	# AI moves in both roles. Its distance choices do not inspect the
+	# player's selected strike side, feint, or visual trail.
+	if swing < 0.0 and recovery < 0.0 and not pending_turn_change:
+		ai_step_wait -= delta
+		if ai_step_wait <= 0.0:
+			ai_step_wait = randf_range(0.7, 1.6)
+			ai_step_target = randf_range(1.8, 2.5)
+		if defending:
+			var desired_attack := clampf(defender_x - ai_step_target, MIN_X, minf(MAX_X, defender_x - MIN_FIGHTER_GAP))
+			attack_x = move_toward(attack_x, desired_attack, 1.45 * delta)
+		else:
+			var desired_defense := clampf(attack_x + ai_step_target, maxf(DEFENDER_MIN_X, attack_x + MIN_FIGHTER_GAP), DEFENDER_MAX_X)
+			defender_x = move_toward(defender_x, desired_defense, 1.1 * delta)
 	# Medium AI controls the attacker during the player's defense turn.
 	if defending and not pending_turn_change and swing < 0.0 and recovery < 0.0 and opponent_delay < 0.0:
-		# Close to a usable range without crossing the fighter gap.
-		var desired_x := minf(defender_x - 1.85, MAX_X)
-		attack_x = move_toward(attack_x, desired_x, 1.45 * delta)
 		if defender_x - attack_x <= 2.45:
 			ai_attack_wait -= delta
 			if ai_attack_wait <= 0.0:
@@ -810,18 +856,7 @@ func _physics_process(delta: float) -> void:
 		if recovery >= 1.0:
 			recovery = -1.0
 			if pending_turn_change:
-				pending_turn_change = false
-				strikes_used = 0
-				defending = not defending
-				guard_shift = 0.0
-				guard_velocity = 0.0
-				guard_target = 0.0
-				guard_window = 0.0
-				guard_side = 0
-				ai_guard_delay = -1.0
-				ai_attack_wait = 1.15
-				ai_fake_used = false
-				say("YOUR DEFENSE TURN: W/S guard against AI." if defending else "YOUR ATTACK TURN: J/L choose side, SPACE strike.")
+				change_turn()
 	if swing >= 0.0:
 		var old := swing
 		# Accelerate the rod, then brake before the end of its travel.
@@ -890,7 +925,7 @@ func _physics_process(delta: float) -> void:
 	last_defender_x = defender_x - defend_velocity / 1.8
 	var attacker_warning := ("  OUT -100" if attacker_out_penalized else "  OUT %d" % ceili(OUT_LIMIT - attacker_out_time)) if attacker_out_time > 0.0 else ""
 	var defender_warning := ("  OUT -100" if defender_out_penalized else "  OUT %d" % ceili(OUT_LIMIT - defender_out_time)) if defender_out_time > 0.0 else ""
-	score_board.text = "VAHID  %d%s\nPEDRAM  %d%s\nTURN  %s  %d/%d\nAI  %s" % [score_hit, attacker_warning, score_block, defender_warning, "PEDRAM" if defending else "VAHID", strikes_used, STRIKES_PER_TURN, AI_DIFFICULTY]
+	score_board.text = "VAHID  %d%s\nPEDRAM  %d%s\nTURN  %s  %d/%d\nSTRIKE CLOCK  %ds\nAI  %s" % [score_hit, attacker_warning, score_block, defender_warning, "PEDRAM" if defending else "VAHID", strikes_used, STRIKES_PER_TURN, ceili(strike_time_left), AI_DIFFICULTY]
 	update_fighter_names()
 	update_visuals()
 	update_swing_trail()
