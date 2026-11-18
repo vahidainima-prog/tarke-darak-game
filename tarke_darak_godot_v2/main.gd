@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v9.5 - escape and referee restart"
+const BUILD_LABEL := "v9.6 - urgent boundary return and anti-trap referee"
 const DEF_X := 1.55
 const STRIKES_PER_TURN := 2
 const STRIKE_TIME_LIMIT := 20.0
@@ -94,6 +94,7 @@ var ai_step_target := 2.10
 var ai_step_wait := 0.0
 var ai_escape_time := 0.0
 var ai_escape_cooldown := 5.0
+var ai_return_blocked_time := 0.0
 var status: Label
 var header: Label
 var detail: Label
@@ -547,6 +548,7 @@ func _input(event: InputEvent) -> void:
 				ai_step_wait = 0.0
 				ai_escape_time = 0.0
 				ai_escape_cooldown = 5.0
+				ai_return_blocked_time = 0.0
 				attack_x = -2.7
 				defender_x = DEF_X
 				swing = -1.0
@@ -685,6 +687,7 @@ func referee_restart() -> void:
 	defender_x = DEF_X
 	ai_escape_time = 0.0
 	ai_escape_cooldown = 5.0
+	ai_return_blocked_time = 0.0
 	ai_step_wait = 0.0
 	attacker_out_time = 0.0
 	defender_out_time = 0.0
@@ -740,6 +743,7 @@ func change_turn() -> void:
 	ai_step_wait = 0.0
 	ai_escape_time = 0.0
 	ai_escape_cooldown = 5.0
+	ai_return_blocked_time = 0.0
 	say("YOUR DEFENSE TURN: Q/E guard, W/S move." if defending else "YOUR ATTACK TURN: J/L side, SPACE strike, W/S move.")
 
 
@@ -1132,9 +1136,19 @@ func _physics_process(delta: float) -> void:
 			if ai_escape_time > 0.0:
 				desired_defense = minf(DEFENDER_MAX_X, maxf(ARENA_RIGHT + 0.55, attack_x + MIN_FIGHTER_GAP))
 			elif defender_x > ARENA_RIGHT:
-				# Prioritize returning rather than camping outside.
+				# Urgent retreat into the arena, independent of random AI spacing.
 				desired_defense = maxf(attack_x + MIN_FIGHTER_GAP, ARENA_RIGHT - 0.45)
-			defender_x = move_toward(defender_x, desired_defense, 1.5 * delta)
+			defender_x = move_toward(defender_x, desired_defense, (3.1 if defender_x > ARENA_RIGHT and ai_escape_time <= 0.0 else 1.5) * delta)
+			# A one-dimensional arena has no side-stepping route. If the
+			# player blocks the only entrance, the referee must separate
+			# fighters promptly instead of leaving the AI trapped.
+			if defender_x > ARENA_RIGHT and ai_escape_time <= 0.0 and attack_x + MIN_FIGHTER_GAP >= ARENA_RIGHT - 0.35:
+				ai_return_blocked_time += delta
+				if ai_return_blocked_time >= 1.2:
+					referee_restart()
+					say("REFEREE: blocked return; fighters separated, no penalty.")
+			else:
+				ai_return_blocked_time = 0.0
 	# Medium AI controls the attacker during the player's defense turn.
 	if defending and not pending_turn_change and swing < 0.0 and recovery < 0.0 and opponent_delay < 0.0:
 		if defender_x - attack_x <= 2.45:
