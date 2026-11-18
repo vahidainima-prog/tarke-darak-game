@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v9.6 - urgent boundary return and anti-trap referee"
+const BUILD_LABEL := "v9.7 - detailed Bakhtiari clothing"
 const DEF_X := 1.55
 const STRIKES_PER_TURN := 2
 const STRIKE_TIME_LIMIT := 20.0
@@ -221,12 +221,25 @@ func person(name: String, x: float, face_right: bool) -> Node3D:
 	rounded_part(waist, "Shoulders", Vector3(0.76, 0.28, 0.67), Vector3(0, 0.77, 0), cloth)
 	rounded_part(waist, "Chogha hem", Vector3(0.71, 0.24, 0.63), Vector3(0, 0.10, 0), cloth.darkened(0.07))
 	rounded_part(waist, "Neck", Vector3(0.24, 0.25, 0.24), Vector3(0, 0.99, 0), skin)
-	for off in [-0.22, -0.08, 0.08, 0.22]:
-		block(waist, "Chogha woven stripe", Vector3(0.033, 0.70, 0.055), Vector3(0.33, 0.42, off), black)
+	# Repeated woven motifs on both visible sides of the chogha.
+	# These are attached to the waist so they follow existing animation.
+	for face in [-1.0, 1.0]:
+		for off in [-0.25, -0.15, -0.05, 0.05, 0.15, 0.25]:
+			var stripe_height := 0.67 if absf(off) < 0.19 else 0.51
+			block(waist, "Chogha woven stripe", Vector3(0.035, stripe_height, 0.038), Vector3(face * 0.337, 0.43, off), black)
+		for band_y in [0.16, 0.73]:
+			block(waist, "Chogha woven crossband", Vector3(0.039, 0.035, 0.53), Vector3(face * 0.342, band_y, 0), black)
+	for side in [-1.0, 1.0]:
+		rounded_part(waist, "Chogha side panel", Vector3(0.18, 0.72, 0.10), Vector3(0.0, 0.43, side * 0.29), cloth.darkened(0.10))
+		block(waist, "Chogha side seam", Vector3(0.035, 0.66, 0.026), Vector3(0.0, 0.42, side * 0.355), black)
+	rounded_part(waist, "Woven collar", Vector3(0.35, 0.13, 0.35), Vector3(0.0, 0.90, 0.0), cloth.darkened(0.18))
 	for side in [-1.0, 1.0]:
 		# Keep the original node names: footwork animation depends on them.
 		var trouser := rounded_part(root, "Debit trousers", Vector3(0.33, 0.92, 0.32), Vector3(0.0, 0.70, side * 0.34), black)
 		var shoe := rounded_part(root, "Giveh", Vector3(0.46, 0.19, 0.37), Vector3((0.08 if face_right else -0.08), 0.12, side * 0.34), cloth)
+		rounded_part(trouser, "Debit trouser cuff", Vector3(0.93, 0.12, 0.96), Vector3(0.0, -0.40, 0.0), black.lightened(0.14))
+		rounded_part(shoe, "Giveh woven toe", Vector3(0.65, 0.42, 0.84), Vector3(0.22 if face_right else -0.22, 0.04, 0.0), cloth.lightened(0.09))
+		block(shoe, "Giveh sole", Vector3(0.94, 0.13, 0.90), Vector3(0.0, -0.39, 0.0), Color(0.28, 0.22, 0.17))
 		var right_side: bool = (side > 0.0) if face_right else (side < 0.0)
 		var side_label := "R" if right_side else "L"
 		var side_color := Color(1.0, 0.18, 0.16) if right_side else Color(0.15, 0.48, 1.0)
@@ -234,6 +247,7 @@ func person(name: String, x: float, face_right: bool) -> Node3D:
 		add_joint_debug_label(shoe, side_label, side_color, Vector3(0.0, 0.23, 0.0))
 	rounded_part(waist, "Head", Vector3(0.39, 0.44, 0.37), Vector3(0, 1.16, 0), skin)
 	rounded_part(waist, "Bakhtiari felt cap", Vector3(0.46, 0.23, 0.44), Vector3(0, 1.43, 0), black)
+	rounded_part(waist, "Felt cap rim", Vector3(0.49, 0.085, 0.47), Vector3(0, 1.355, 0), black.lightened(0.12))
 	var face_dir := 1.0 if face_right else -1.0
 	rounded_part(waist, "Nose-facing", Vector3(0.14, 0.12, 0.15), Vector3(face_dir * 0.205, 1.14, 0.0), skin)
 	for side in [-1.0, 1.0]:
