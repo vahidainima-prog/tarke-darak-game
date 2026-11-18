@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v6.2 - typed Godot 4 strike arrays"
+const BUILD_LABEL := "v6.3 - forward bending elbows"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -460,7 +460,7 @@ func update_visuals() -> void:
 	animate_footwork(attacker, attack_step_phase, attack_x - last_attack_x, pose, 1.0)
 	animate_footwork(defender, defend_step_phase, defender_x - last_defender_x, 0.0, -1.0)
 	var bend_amount := smoothstep(0.02, 0.62, pose)
-	var shoulder_shift := Vector3(0.65 * bend_amount, -0.68 * bend_amount, 0.0)
+	var shoulder_shift := Vector3(0.24 * bend_amount, -0.16 * bend_amount, 0.0)
 	var ends := strike_ends(pose)
 	var a := ends[0]
 	var b := ends[1]
@@ -489,8 +489,10 @@ func update_visuals() -> void:
 	# Keep the driving hand at its assigned end; only the opposite hand releases.
 	attack_hand_a.position = left_grip.lerp(left_rest, release_blend if strike_side < 0 else 0.0)
 	attack_hand_b.position = right_grip.lerp(right_rest, release_blend if strike_side > 0 else 0.0)
-	place_two_bone_arm(attack_arm_a, attack_forearm_a, attack_elbow_a, Vector3(attack_x + 0.20, 1.92, -0.14) + shoulder_shift, attack_hand_a.position, Vector3(0.65, -0.18, -0.65))
-	place_two_bone_arm(attack_arm_b, attack_forearm_b, attack_elbow_b, Vector3(attack_x + 0.20, 1.92, 0.16) + shoulder_shift, attack_hand_b.position, Vector3(0.65, -0.18, 0.65))
+	var left_elbow_hint: Vector3 = Vector3(1.15, -0.18, -0.48) if strike_side > 0 else Vector3(0.78, -0.32, -0.75)
+	place_two_bone_arm(attack_arm_a, attack_forearm_a, attack_elbow_a, Vector3(attack_x + 0.20, 1.92, -0.14) + shoulder_shift, attack_hand_a.position, left_elbow_hint)
+	var right_elbow_hint: Vector3 = Vector3(1.15, -0.18, 0.48) if strike_side < 0 else Vector3(0.78, -0.32, 0.75)
+	place_two_bone_arm(attack_arm_b, attack_forearm_b, attack_elbow_b, Vector3(attack_x + 0.20, 1.92, 0.16) + shoulder_shift, attack_hand_b.position, right_elbow_hint)
 	var g := guard_ends()
 	place_rod(darak, g[0], g[1])
 	defend_hand.position = g[0].lerp(g[1], 0.70)
