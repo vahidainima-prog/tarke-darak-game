@@ -2,13 +2,17 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v7.6 - fair scoring and AI defense"
+const BUILD_LABEL := "v7.7 - marked arena and five-second out-of-bounds"
 const DEF_X := 1.55
-const MIN_X := -4.7
+const ARENA_LEFT := -3.45
+const ARENA_RIGHT := 2.45
+const OUT_LIMIT := 5.0
+const OUT_PENALTY := 100
+const MIN_X := -5.25
 const MAX_X := 0.35
 const MIN_FIGHTER_GAP := 1.12
 const DEFENDER_MIN_X := 0.65
-const DEFENDER_MAX_X := 3.35
+const DEFENDER_MAX_X := 4.20
 const SWING_SECONDS := 0.82
 const RECOVERY_SECONDS := 0.48
 const MAX_SWEEP_STEP := 0.025
@@ -46,6 +50,10 @@ var fake_timer := 0.0
 var fake_cooldown := 0.0
 var score_hit := 0
 var score_block := 0
+var attacker_out_time := 0.0
+var defender_out_time := 0.0
+var attacker_out_penalized := false
+var defender_out_penalized := false
 var score_board: Label
 var ai_guard_delay := -1.0
 var ai_guard_side := 0
@@ -242,6 +250,12 @@ func _ready() -> void:
 	light.shadow_enabled = true
 	add_child(light)
 	block(self, "Ground", Vector3(17, 0.12, 7), Vector3(0, -0.08, 0), Color(0.62, 0.49, 0.32))
+	# Clearly visible arena sidelines, spanning the full fighting depth.
+	for edge_x in [ARENA_LEFT, ARENA_RIGHT]:
+		block(self, "Arena boundary", Vector3(0.085, 0.025, 6.0), Vector3(edge_x, 0.002, 0), Color(0.97, 0.91, 0.65))
+	# Short end marks emphasize the playable area from the side camera.
+	for depth_z in [-2.85, 2.85]:
+		block(self, "Arena end line", Vector3(ARENA_RIGHT - ARENA_LEFT, 0.025, 0.07), Vector3((ARENA_LEFT + ARENA_RIGHT) * 0.5, 0.002, depth_z), Color(0.97, 0.91, 0.65))
 	add_scenery()
 	attacker = person("Attacker facing RIGHT", attack_x, true)
 	defender = person("Defender facing LEFT", defender_x, false)
@@ -374,6 +388,10 @@ func _input(event: InputEvent) -> void:
 				feint_target = 0.0
 				score_hit = 0
 				score_block = 0
+				attacker_out_time = 0.0
+				defender_out_time = 0.0
+				attacker_out_penalized = false
+				defender_out_penalized = false
 				say("Reset. Move closer before striking.")
 			KEY_J:
 				if not defending and swing < 0.0 and recovery < 0.0:
@@ -743,6 +761,26 @@ func _physics_process(delta: float) -> void:
 			recovery = 0.0
 			active_attack = false
 			swing = -1.0
+	# A continuous five-second excursion costs points once; returning
+	# inside resets the countdown and allows a future new infraction.
+	if attack_x < ARENA_LEFT or attack_x > ARENA_RIGHT:
+		attacker_out_time += delta
+		if attacker_out_time >= OUT_LIMIT and not attacker_out_penalized:
+			score_hit -= OUT_PENALTY
+			attacker_out_penalized = true
+			say("ATTACKER OUT: 5 seconds outside arena! -100")
+	else:
+		attacker_out_time = 0.0
+		attacker_out_penalized = false
+	if defender_x < ARENA_LEFT or defender_x > ARENA_RIGHT:
+		defender_out_time += delta
+		if defender_out_time >= OUT_LIMIT and not defender_out_penalized:
+			score_block -= OUT_PENALTY
+			defender_out_penalized = true
+			say("DEFENDER OUT: 5 seconds outside arena! -100")
+	else:
+		defender_out_time = 0.0
+		defender_out_penalized = false
 	var attack_velocity := (attack_x - before_attack) / maxf(delta, 0.0001)
 	var defend_velocity := (defender_x - before_defender) / maxf(delta, 0.0001)
 	if absf(attack_velocity) > 0.01:
@@ -751,7 +789,9 @@ func _physics_process(delta: float) -> void:
 		defend_step_phase += absf(defend_velocity) * delta * 8.0
 	last_attack_x = attack_x - attack_velocity / 1.8
 	last_defender_x = defender_x - defend_velocity / 1.8
-	score_board.text = "ATTACKER  %d\nDEFENDER  %d" % [score_hit, score_block]
+	var attacker_warning := "  OUT %.1f/5s" % minf(attacker_out_time, OUT_LIMIT) if attacker_out_time > 0.0 else ""
+	var defender_warning := "  OUT %.1f/5s" % minf(defender_out_time, OUT_LIMIT) if defender_out_time > 0.0 else ""
+	score_board.text = "ATTACKER  %d%s\nDEFENDER  %d%s" % [score_hit, attacker_warning, score_block, defender_warning]
 	update_visuals()
 	update_camera(delta)
 	header.text = BUILD_LABEL + "  |  " + ("DEFENSE TEST" if defending else "ATTACK TEST") + "  |  Hit: %d  Block: %d" % [score_hit, score_block]
