@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v5.3 - raised forward ready grip"
+const BUILD_LABEL := "v5.4 - forehead ready pose and split strike lanes"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -326,16 +326,15 @@ func strike_ends(p: float) -> Array[Vector3]:
  var t := clampf(p, 0.0, 1.0)
  var turn := smoothstep(0.03, 0.48, t)
  var arc := smoothstep(0.0, 1.0, t)
- var ready_center := Vector3(attack_x + 0.52, 2.78, 0.0)
+ var ready_center := Vector3(attack_x + 0.56, 2.48, 0.0)
  var ready_direction := Vector3(0.0, 0.0, 1.0)
  var distance := defender_x - attack_x
  var tip_reach := minf(2.02, distance - 0.18)
- var leg_offset := -0.18 if strike_side > 0 else 0.18
- var tip_x := attack_x + lerpf(1.125, tip_reach + leg_offset, arc)
+ var tip_x := attack_x + lerpf(1.125, tip_reach, arc)
  var tip_y := lerpf(2.48, 0.43, smoothstep(0.0, 0.75, t))
- var tip_z := lerpf(-0.28, float(strike_side) * 0.12, arc) + float(strike_side) * 0.46 * sin(PI * t)
+ var tip_z := float(strike_side) * lerpf(0.0, 0.34, arc)
  var angle := lerpf(0.0, -0.38, arc)
- var strike_direction := Vector3(cos(angle), sin(angle), float(strike_side) * 0.40 * sin(PI * t)).normalized()
+ var strike_direction := Vector3(cos(angle), sin(angle), float(strike_side) * 0.48 * arc).normalized()
  var strike_tip := Vector3(tip_x, tip_y, tip_z)
  var strike_center := strike_tip - strike_direction * (STICK_LENGTH * 0.5)
  var center := ready_center.lerp(strike_center, turn)
@@ -453,11 +452,12 @@ func check_sweep(previous: float, current: float, previous_guard: Array[Vector3]
   var guard_b := previous_guard[1].lerp(current_guard[1], alpha)
   if segment_distance(s[0], s[1], guard_a, guard_b) <= STICK_RADIUS + GUARD_RADIUS + 0.025:
    return "block"
-  for foot_x in [defender_x - 0.18, defender_x + 0.18]:
-   var leg_a := Vector3(foot_x, 0.12, 0.0)
-   var leg_b := Vector3(foot_x, 0.77, 0.0)
-   if segment_distance(s[0], s[1], leg_a, leg_b) <= 0.20:
-    return "leg"
+  # Each strike is checked only against its selected near/far leg lane.
+  var target_z := float(strike_side) * 0.34
+  var leg_a := Vector3(defender_x - 0.12, 0.12, target_z)
+  var leg_b := Vector3(defender_x - 0.12, 0.77, target_z)
+  if segment_distance(s[0], s[1], leg_a, leg_b) <= 0.20:
+   return "leg"
  return ""
 
 func update_camera(delta: float) -> void:
