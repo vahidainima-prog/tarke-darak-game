@@ -236,14 +236,14 @@ func _ready() -> void:
 	# Leg labels are attached directly to each moving trouser and shoe.
 	terkeh = rod(self, "Terkeh attached to raised hands", STICK_RADIUS, Color(0.88, 0.69, 0.34))
 	darak = rod(self, "Darak held in defender hand", GUARD_RADIUS, Color(0.36, 0.22, 0.12))
- tip_debug = MeshInstance3D.new()
- tip_debug.name = "DEBUG yellow strike tip"
- var tip_mesh := SphereMesh.new()
- tip_mesh.radius = 0.095
- tip_mesh.height = 0.19
- tip_debug.mesh = tip_mesh
- tip_debug.material_override = material(Color(1.0, 0.90, 0.08))
- add_child(tip_debug)
+	tip_debug = MeshInstance3D.new()
+	tip_debug.name = "DEBUG yellow strike tip"
+	var tip_mesh := SphereMesh.new()
+	tip_mesh.radius = 0.095
+	tip_mesh.height = 0.19
+	tip_debug.mesh = tip_mesh
+	tip_debug.material_override = material(Color(1.0, 0.90, 0.08))
+	add_child(tip_debug)
 	attack_hand_a = block(self, "Attacker left hand", Vector3(0.19, 0.17, 0.17), Vector3.ZERO, Color(0.67, 0.44, 0.29))
 	attack_hand_b = block(self, "Attacker right hand", Vector3(0.19, 0.17, 0.17), Vector3.ZERO, Color(0.67, 0.44, 0.29))
 	defend_hand = block(self, "Defender upper grip", Vector3(0.22, 0.20, 0.22), Vector3.ZERO, Color(0.67, 0.44, 0.29))
