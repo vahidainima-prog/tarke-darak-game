@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v6.7 - distance-aware outside arc"
+const BUILD_LABEL := "v6.8 - mirrored rear-start arcs"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -386,8 +386,10 @@ func strike_ends(p: float) -> Array[Vector3]:
 	# This avoids cutting through the middle of the defender on the way down.
 	var gap := defender_x - attack_x
 	var close_factor := 1.0 - smoothstep(1.20, 2.90, gap)
-	var waypoint_butt := Vector3(attack_x + 0.24, 1.85 + 0.25 * close_factor, side * 1.30)
-	var waypoint_direction := Vector3(1.42, -0.38, -side * 0.12).normalized()
+	var waypoint_butt := Vector3(attack_x - 0.18, 2.28, side * 1.22)
+	# Rear windup on the driving-hand side: RIGHT arcs on +Z,
+	# LEFT arcs on -Z. The staff never switches hands.
+	var waypoint_direction := Vector3(1.28, 0.12, side * 0.34).normalized()
 	var waypoint_tip := waypoint_butt + waypoint_direction * STICK_LENGTH
 	# Final: rear hand remains on the attacker's side; tip approaches
 	# the OUTSIDE of the labeled leg rather than crossing the belly.
@@ -411,8 +413,8 @@ func strike_ends(p: float) -> Array[Vector3]:
 		# Quadratic Bezier arc: sweep around the OUTSIDE first, then inward
 		# toward the outer face of the selected leg (never across the torso).
 		var u := follow_through
-		var outer_butt := Vector3(attack_x + 0.25, 1.43 + 0.42 * close_factor, side * 1.52)
-		var outer_tip := Vector3(minf(attack_x + 2.02, defender_x - 0.18), 1.23 + 0.35 * close_factor, side * 1.75)
+		var outer_butt := Vector3(attack_x - 0.06, 2.12 + 0.10 * close_factor, side * 1.62)
+		var outer_tip := Vector3(minf(attack_x + 1.55, defender_x - 0.18), 1.78 + 0.15 * close_factor, side * 1.90)
 		butt = waypoint_butt * ((1.0 - u) * (1.0 - u)) + outer_butt * (2.0 * (1.0 - u) * u) + final_butt * (u * u)
 		tip = waypoint_tip * ((1.0 - u) * (1.0 - u)) + outer_tip * (2.0 * (1.0 - u) * u) + final_tip * (u * u)
 	# Rebuild a constant-length staff from the driving-hand end.
