@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v7.8 - larger arena and integer countdown"
+const BUILD_LABEL := "v7.9 - longer arena original camera"
 const DEF_X := 1.55
 const ARENA_LEFT := -4.30
 const ARENA_RIGHT := 3.30
@@ -292,7 +292,7 @@ func _ready() -> void:
 	defend_elbow_b = block(self, "Defender elbow far", Vector3(0.17, 0.17, 0.17), Vector3.ZERO, Color(0.66, 0.44, 0.30))
 	game_camera = Camera3D.new()
 	add_child(game_camera)
-	game_camera.position = Vector3(0, 2.65, 15.5)
+	game_camera.position = Vector3(0, 2.45, 12.5)
 	game_camera.look_at(camera_focus, Vector3.UP)
 	game_camera.fov = 53.0
 	game_camera.current = true
@@ -658,7 +658,7 @@ func check_sweep(previous: float, current: float, previous_guard: Array[Vector3]
 func update_camera(delta: float) -> void:
 	if game_camera == null:
 		return
-	var target_position := Vector3(0.0, 2.65, 15.5)
+	var target_position := Vector3(0.0, 2.45, 12.5)
 	var target_focus := Vector3(0.0, 1.45, 0.0)
 	if shoulder_camera:
 		var controlled_x := defender_x if defending else attack_x
