@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v8.2 - true rear third-person camera"
+const BUILD_LABEL := "v8.3 - turn-follow camera and smaller names"
 const DEF_X := 1.55
 const STRIKES_PER_TURN := 2
 const AI_DIFFICULTY := "MEDIUM"
@@ -349,10 +349,10 @@ func add_fighter_name(fighter: Node3D, fighter_name: String, color: Color) -> vo
 	var nameplate := Label3D.new()
 	nameplate.name = "FighterName"
 	nameplate.text = fighter_name
-	nameplate.font_size = 88
-	nameplate.pixel_size = 0.006
+	nameplate.font_size = 48
+	nameplate.pixel_size = 0.0045
 	nameplate.modulate = color
-	nameplate.outline_size = 14
+	nameplate.outline_size = 9
 	nameplate.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	nameplate.no_depth_test = true
 	nameplate.position = Vector3(0.0, 3.12, 0.0)
@@ -672,18 +672,18 @@ func check_sweep(previous: float, current: float, previous_guard: Array[Vector3]
 func update_camera(delta: float) -> void:
 	if game_camera == null:
 		return
-	# Vahid faces +X. To see his BACK, camera must stay directly on
-	# the -X axis (not offset sideways along Z). The former large +Z
-	# offset made the scene look like a side view.
 	var target_position := Vector3(0.0, 2.45, 12.5)
 	var target_focus := Vector3(0.0, 1.45, 0.0)
 	if shoulder_camera:
-		# Reference composition: Vahid large in the foreground, Pedram
-		# centered ahead, ground markings visible below both fighters.
-		# Keep camera distance consistent; follow Vahid in both roles.
-		target_position = Vector3(attack_x - 4.25, 3.15, 0.18)
-		target_focus = Vector3(attack_x + 1.85, 1.15, 0.0)
-	var weight := 1.0 - exp(-5.5 * delta)
+		# Follow the character the player currently controls.
+		# During attack, camera looks along +X from behind the attacker.
+		# During defense, it looks along -X from behind the defender.
+		var controlled_x: float = defender_x if defending else attack_x
+		var facing: float = -1.0 if defending else 1.0
+		target_position = Vector3(controlled_x - facing * 4.55, 4.15, 0.18)
+		target_focus = Vector3(controlled_x + facing * 1.95, 1.00, 0.0)
+	# A slower blend avoids snapping across the field on a role switch.
+	var weight := 1.0 - exp(-3.3 * delta)
 	game_camera.position = game_camera.position.lerp(target_position, weight)
 	camera_focus = camera_focus.lerp(target_focus, weight)
 	game_camera.look_at(camera_focus, Vector3.UP)
