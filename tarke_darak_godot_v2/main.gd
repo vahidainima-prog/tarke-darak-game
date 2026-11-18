@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v5.0 - switchable third-person camera"
+const BUILD_LABEL := "v5.1 - horizontal two-end grip"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -328,10 +328,10 @@ func strike_ends(p: float) -> Array[Vector3]:
  var tip_reach := minf(2.02, distance - 0.18)
  # Opposite-hand strikes target different legs rather than the same centerline.
  var leg_offset := -0.18 if strike_side > 0 else 0.18
- var tip_x := attack_x + lerpf(1.125 + 0.14 * float(strike_side), tip_reach + leg_offset, arc)
- var tip_y := lerpf(2.57, 0.43, smoothstep(0.0, 0.75, t))
+ var tip_x := attack_x + lerpf(STICK_LENGTH * 0.5, tip_reach + leg_offset, arc)
+ var tip_y := lerpf(2.48, 0.43, smoothstep(0.0, 0.75, t))
  # Cross the defender's guard plane on the way to the leg plane.
- var tip_z := lerpf(-0.42, float(strike_side) * 0.12, arc) + float(strike_side) * 0.46 * sin(PI * t)
+ var tip_z := lerpf(-0.28, float(strike_side) * 0.12, arc) + float(strike_side) * 0.46 * sin(PI * t)
  var angle := lerpf(0.0, -0.94, arc)
  var direction := Vector3(cos(angle), sin(angle), float(strike_side) * 0.55 * sin(PI * t)).normalized()
  var tip := Vector3(tip_x, tip_y, tip_z)
@@ -401,21 +401,14 @@ func update_visuals() -> void:
  if recovery >= 0.0:
   release_target *= 1.0 - smoothstep(0.45, 0.95, recovery)
  release_blend = release_target
- # Both hands hold opposite ends at rest. During the swing only the
- # driving hand stays at its near-end grip; the other drops beside the torso.
- # Photo reference: wide overhead grip at rest, one controlling hand at the
- # near end in the final bent pose, opposite elbow folded toward the waist.
- var left_grip := a + direction * lerpf(0.20, 0.57, smoothstep(0.0, 0.35, pose))
- # The driving hand must grip the BACK end, not follow the striking tip.
- # For the right-hand strike, slide the right grip from its overhead
- # position to the butt while the left hand releases.
- var right_ready_grip := b - direction * 0.20
- var right_drive_grip := a + direction * 0.57
- var grip_transfer := smoothstep(0.0, 0.24, pose) if strike_side < 0 else 0.0
- var right_grip := right_ready_grip.lerp(right_drive_grip, grip_transfer)
+ # The rod is ONE straight horizontal bar in the ready pose.
+ # Each hand grips its OWN opposite end; never slide hands together.
+ # A small inset keeps the hands visually on the wood.
+ var left_grip := a + direction * 0.11
+ var right_grip := b - direction * 0.11
  var left_rest := Vector3(attack_x - 0.15 + 0.16 * bend_amount, 1.44 - 0.35 * bend_amount, -0.50)
  var right_rest := Vector3(attack_x - 0.13 + 0.16 * bend_amount, 1.44 - 0.35 * bend_amount, 0.53)
- # Keep the driving hand on its own end throughout the swing.
+ # Keep the driving hand at its assigned end; only the opposite hand releases.
  attack_hand_a.position = left_grip.lerp(left_rest, release_blend if strike_side < 0 else 0.0)
  attack_hand_b.position = right_grip.lerp(right_rest, release_blend if strike_side > 0 else 0.0)
  place_two_bone_arm(attack_arm_a, attack_forearm_a, attack_elbow_a, Vector3(attack_x + 0.20, 1.92, -0.14) + shoulder_shift, attack_hand_a.position, Vector3(0.65, -0.18, -0.65))
