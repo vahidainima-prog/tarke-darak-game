@@ -2,8 +2,10 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v7.9 - longer arena original camera"
+const BUILD_LABEL := "v8.0 - two-strike turns and medium AI"
 const DEF_X := 1.55
+const STRIKES_PER_TURN := 2
+const AI_DIFFICULTY := "MEDIUM"
 const ARENA_LEFT := -4.30
 const ARENA_RIGHT := 3.30
 const OUT_LIMIT := 5.0
@@ -58,6 +60,11 @@ var score_board: Label
 var ai_guard_delay := -1.0
 var ai_guard_side := 0
 var ai_guard_chance := 0.62
+var strikes_used := 0
+var pending_turn_change := false
+var ai_attack_wait := 0.95
+var ai_fake_wait := 0.0
+var ai_fake_used := false
 var status: Label
 var header: Label
 var detail: Label
@@ -327,13 +334,13 @@ func _ready() -> void:
 	score_board.add_theme_font_size_override("font_size", 20)
 	scoreboard_panel.add_child(score_board)
 	var footer := Label.new()
-	footer.text = "A/D move | TAB switch | W blue L / S red R guard | J/L attack side | F fake | SPACE attack | R reset"
+	footer.text = "A/D move | W/S guard on defense turn | J/L side, F fake, SPACE strike on attack turn | R reset"
 	footer.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	footer.offset_top = -43
 	footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	footer.add_theme_font_size_override("font_size", 15)
 	layer.add_child(footer)
-	say("Approach with D. Terkeh stays in the hands; no invisible hit line.")
+	say("Your attack turn: J/L choose side, SPACE strike. Two strikes then AI attacks.")
 	update_visuals()
 
 func say(s: String) -> void:
@@ -347,26 +354,14 @@ func _input(event: InputEvent) -> void:
 				shoulder_camera = not shoulder_camera
 				say("Camera: behind the controlled fighter" if shoulder_camera else "Camera: original side view")
 			KEY_TAB:
-				defending = not defending
-				swing = -1.0
-				recovery = -1.0
-				active_attack = false
-				swing_speed = 0.0
-				impact_hold = 0.0
-				opponent_delay = -1.0
-				# Switching control does not teleport either fighter.
-				# Their current positions remain visible and controllable.
-				guard_shift = 0.0
-				guard_velocity = 0.0
-				guard_target = 0.0
-				guard_window = 0.0
-				guard_cooldown = 0.0
-				guard_side = 0
-				ai_guard_delay = -1.0
-				fake_timer = 0.0
-				say("DEFENSE: A/D move defender; W/S steer darak; SPACE starts opponent." if defending else "ATTACK: A/D move; J/L feint; SPACE swing.")
+				say("Turns change automatically after two strikes. Press R to restart.")
 			KEY_R:
 				defending = false
+				strikes_used = 0
+				pending_turn_change = false
+				ai_attack_wait = 0.95
+				ai_fake_wait = 0.0
+				ai_fake_used = false
 				attack_x = -2.7
 				defender_x = DEF_X
 				swing = -1.0
@@ -394,7 +389,7 @@ func _input(event: InputEvent) -> void:
 				defender_out_penalized = false
 				say("Reset. Move closer before striking.")
 			KEY_J:
-				if not defending and swing < 0.0 and recovery < 0.0:
+				if not defending and not pending_turn_change and swing < 0.0 and recovery < 0.0:
 					strike_side = 1
 					feint_target = -0.60
 					say("J: LEFT-hand drive -> defender RIGHT / red R leg.")
@@ -404,7 +399,7 @@ func _input(event: InputEvent) -> void:
 					feint_target = FEINT_DEPTH_LIMIT
 					say("L: RIGHT-hand drive -> defender LEFT / blue L leg.")
 			KEY_F:
-				if not defending and swing < 0.0 and recovery < 0.0 and fake_cooldown <= 0.0:
+				if not defending and not pending_turn_change and swing < 0.0 and recovery < 0.0 and fake_cooldown <= 0.0:
 					fake_timer = 0.48
 					fake_cooldown = 1.10
 					say("FEINT! A fake windup with no hit. Follow with SPACE.")
@@ -416,19 +411,15 @@ func _input(event: InputEvent) -> void:
 					guard_cooldown = 0.48
 					say("Darak: LEFT / blue L" if guard_side > 0 else "Darak: RIGHT / red R")
 			KEY_SPACE:
-				if swing < 0.0 and recovery < 0.0 and opponent_delay < 0.0 and fake_timer <= 0.0:
-					if defending:
-						opponent_delay = 0.72
-						strike_side = -1 if randi_range(0, 1) == 0 else 1
-						guard_window = 0.0
-						guard_cooldown = 0.0
-						guard_side = 0
-						guard_target = 0.0
-						say("Incoming: LEFT / blue L! Press W at the right time." if strike_side < 0 else "Incoming: RIGHT / red R! Press S at the right time.")
-					else:
-						start_swing()
+				if not defending and not pending_turn_change and swing < 0.0 and recovery < 0.0 and opponent_delay < 0.0 and fake_timer <= 0.0:
+					start_swing()
 
 func start_swing() -> void:
+	if strikes_used >= STRIKES_PER_TURN:
+		return
+	strikes_used += 1
+	if strikes_used >= STRIKES_PER_TURN:
+		pending_turn_change = true
 	if not defending:
 		# AI reads the windup with imperfect accuracy and variable reaction.
 		ai_guard_delay = randf_range(0.18, 0.40) if randf() < ai_guard_chance else -1.0
@@ -692,7 +683,7 @@ func _physics_process(delta: float) -> void:
 		guard_shift = lerpf(guard_shift, guard_target, ai_weight)
 	var before_attack := attack_x
 	var before_defender := defender_x
-	if swing < 0.0 and recovery < 0.0 and not defending:
+	if swing < 0.0 and recovery < 0.0 and not defending and not pending_turn_change:
 		if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
 			attack_x = minf(minf(MAX_X, defender_x - MIN_FIGHTER_GAP), attack_x + 2.0 * delta)
 		if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
@@ -719,6 +710,25 @@ func _physics_process(delta: float) -> void:
 			opponent_delay -= delta
 			if opponent_delay < 0.0:
 				start_swing()
+	# Medium AI controls the attacker during the player's defense turn.
+	if defending and not pending_turn_change and swing < 0.0 and recovery < 0.0 and opponent_delay < 0.0:
+		# Close to a usable range without crossing the fighter gap.
+		var desired_x := minf(defender_x - 1.85, MAX_X)
+		attack_x = move_toward(attack_x, desired_x, 1.45 * delta)
+		if defender_x - attack_x <= 2.45:
+			ai_attack_wait -= delta
+			if ai_attack_wait <= 0.0:
+				if not ai_fake_used and randf() < 0.30:
+					ai_fake_used = true
+					fake_timer = 0.48
+					ai_attack_wait = 0.72
+					say("AI FEINT: watch for the real strike!")
+				else:
+					strike_side = -1 if randi_range(0, 1) == 0 else 1
+					ai_attack_wait = randf_range(1.0, 1.65)
+					ai_fake_used = false
+					start_swing()
+
 	feint_depth = move_toward(feint_depth, clampf(feint_target, -FEINT_DEPTH_LIMIT, FEINT_DEPTH_LIMIT), delta * 1.7)
 	if impact_hold > 0.0:
 		impact_hold = maxf(0.0, impact_hold - delta)
@@ -726,6 +736,19 @@ func _physics_process(delta: float) -> void:
 		recovery += delta / RECOVERY_SECONDS
 		if recovery >= 1.0:
 			recovery = -1.0
+			if pending_turn_change:
+				pending_turn_change = false
+				strikes_used = 0
+				defending = not defending
+				guard_shift = 0.0
+				guard_velocity = 0.0
+				guard_target = 0.0
+				guard_window = 0.0
+				guard_side = 0
+				ai_guard_delay = -1.0
+				ai_attack_wait = 1.15
+				ai_fake_used = false
+				say("YOUR DEFENSE TURN: W/S guard against AI." if defending else "YOUR ATTACK TURN: J/L choose side, SPACE strike.")
 	if swing >= 0.0:
 		var old := swing
 		# Accelerate the rod, then brake before the end of its travel.
@@ -791,7 +814,7 @@ func _physics_process(delta: float) -> void:
 	last_defender_x = defender_x - defend_velocity / 1.8
 	var attacker_warning := ("  OUT -100" if attacker_out_penalized else "  OUT %d" % ceili(OUT_LIMIT - attacker_out_time)) if attacker_out_time > 0.0 else ""
 	var defender_warning := ("  OUT -100" if defender_out_penalized else "  OUT %d" % ceili(OUT_LIMIT - defender_out_time)) if defender_out_time > 0.0 else ""
-	score_board.text = "ATTACKER  %d%s\nDEFENDER  %d%s" % [score_hit, attacker_warning, score_block, defender_warning]
+	score_board.text = "ATTACKER  %d%s\nDEFENDER  %d%s\nTURN  %s  %d/%d\nAI  %s" % [score_hit, attacker_warning, score_block, defender_warning, "AI ATTACK" if defending else "YOU ATTACK", strikes_used, STRIKES_PER_TURN, AI_DIFFICULTY]
 	update_visuals()
 	update_camera(delta)
 	header.text = BUILD_LABEL + "  |  " + ("DEFENSE TEST" if defending else "ATTACK TEST") + "  |  Hit: %d  Block: %d" % [score_hit, score_block]
