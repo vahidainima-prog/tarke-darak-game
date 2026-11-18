@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v7.0 - planted feet and forward stance"
+const BUILD_LABEL := "v7.1 - fixed stance and deeper lean"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -442,35 +442,37 @@ func guard_ends() -> Array[Vector3]:
 	return [bottom, top]
 
 func animate_footwork(character: Node3D, phase: float, motion: float, swing_pose: float, facing: float) -> void:
-	# Stable stance: one foot forward on the driving-hand side.
-	# No phase-based jitter during a strike; the planted foot stays grounded.
+	# Both feet stay planted during attacks. A fixed staggered stance
+	# replaces the old phase-driven left-foot movement.
 	var stride := minf(1.0, absf(motion) / 1.8)
-	var crouch_blend := smoothstep(0.12, 0.78, swing_pose) if facing > 0.0 else 0.0
-	var crouch := 0.13 * crouch_blend
+	var bend := smoothstep(0.12, 0.78, swing_pose) if facing > 0.0 else 0.0
+	var crouch := 0.17 * bend
+	var driving_side := -float(strike_side)
 	for child in character.get_children():
 		if not child is Node3D:
 			continue
 		var n := child as Node3D
 		if n.name.begins_with("Debit trousers") or n.name.begins_with("Giveh"):
 			var side := -1.0 if n.position.z < 0.0 else 1.0
-			var driving_side := -float(strike_side)
 			var forward_leg := side * driving_side > 0.0
-			var stance_offset := (0.15 if forward_leg else -0.10) * crouch_blend if facing > 0.0 else 0.0
+			# The stance is already set in ready pose and remains unchanged
+			# through windup, contact and recovery.
+			var stance_x := (0.13 if forward_leg else -0.10) if facing > 0.0 else 0.0
 			var step := sin(phase + (0.0 if side < 0.0 else PI))
-			var walking_offset := 0.19 * stride * step * (1.0 - crouch_blend)
+			var walking_x := 0.19 * stride * step
+			var walking_y := 0.08 * stride * maxf(0.0, step)
 			if n.name.begins_with("Debit trousers"):
-				n.position.x = stance_offset + walking_offset
-				n.position.y = 0.70 - 0.045 * crouch_blend + 0.08 * stride * maxf(0.0, step) * (1.0 - crouch_blend)
-				n.rotation.z = -facing * (0.10 if forward_leg else 0.07) * crouch_blend
+				n.position.x = stance_x + walking_x
+				n.position.y = 0.70 - 0.045 * bend + walking_y
+				n.rotation.z = -facing * (0.11 if forward_leg else 0.08) * bend
 			else:
-				# Shoes remain on the floor; no unwanted left-foot lift.
-				n.position.x = facing * 0.08 + stance_offset + walking_offset
-				n.position.y = 0.12 + 0.08 * stride * maxf(0.0, step) * (1.0 - crouch_blend)
+				n.position.x = facing * 0.08 + stance_x + walking_x
+				n.position.y = 0.12 + walking_y
 				n.rotation.z = 0.0
 		elif n.name == "WaistJoint":
-			n.rotation.z = -facing * (0.05 * stride * sin(phase) * (1.0 - crouch_blend) + 0.38 * crouch_blend)
-			n.rotation.y = float(strike_side) * 0.28 * crouch_blend if facing > 0.0 else 0.0
-			n.position = Vector3(facing * 0.08 * crouch_blend, 1.14 - crouch, 0.0)
+			n.rotation.z = -facing * (0.05 * stride * sin(phase) + 0.46 * bend)
+			n.rotation.y = float(strike_side) * 0.28 * bend if facing > 0.0 else 0.0
+			n.position = Vector3(facing * 0.08 * bend, 1.14 - crouch, 0.0)
 
 func update_visuals() -> void:
 	attacker.position.x = attack_x
