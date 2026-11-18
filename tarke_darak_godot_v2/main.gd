@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v5.9 - mirrored tip-led strikes"
+const BUILD_LABEL := "v6.0 - outside-leg one-hand strike"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -369,25 +369,27 @@ func start_swing() -> void:
 	say("Swing: physical terkeh sweeps toward the defender.")
 
 func strike_ends(p: float) -> Array[Vector3]:
-	# Anatomical mapping: attacker's RIGHT hand drives to defender's
-	# LEFT (+Z, blue L). Attacker's LEFT drives to RIGHT (-Z, red R).
-	# At rest both hands grip opposite ends of a horizontal forehead bar.
+	# Ready: both hands on opposite ends, staff across the forehead.
+	# L key = attacker RIGHT hand (+Z) drives the butt at endpoint B;
+	# the TIP (endpoint A) goes to defender LEFT outside (+Z, camera side).
+	# J key = attacker LEFT hand (-Z) drives endpoint A;
+	# the TIP (endpoint B) goes to defender RIGHT outside (-Z).
 	var t := clampf(p, 0.0, 1.0)
-	var turn := smoothstep(0.02, 0.83, t)
+	var turn := smoothstep(0.02, 0.86, t)
 	var ready_center := Vector3(attack_x + 0.56, 2.48, 0.0)
 	var ready_a := ready_center + Vector3(0.0, 0.0, -STICK_LENGTH * 0.5)
 	var ready_b := ready_center + Vector3(0.0, 0.0, STICK_LENGTH * 0.5)
-	# strike_side > 0: left hand drives, target defender RIGHT (-Z).
-	# strike_side < 0: right hand drives, target defender LEFT (+Z).
-	var target_z := -float(strike_side) * 0.34
-	var tip_x := minf(defender_x, attack_x + 2.34)
+	var target_side := -float(strike_side)
+	# Outside of the defender's left/right leg, not through the torso.
+	var target_z := target_side * 0.48
+	var tip_x := minf(defender_x - 0.10, attack_x + 2.32)
 	var final_tip := Vector3(tip_x, 0.43, target_z)
-	var strike_direction := Vector3(1.97, -0.70, -float(strike_side) * 0.27).normalized()
-	var final_butt := final_tip - strike_direction * STICK_LENGTH
-	# Keep the driving hand on the SAME rod endpoint from ready to finish.
+	# The hand stays behind the tip, on the attacker's side of the gap.
+	var forward := Vector3(1.94, -0.66, target_side * 0.38).normalized()
+	var final_butt := final_tip - forward * STICK_LENGTH
 	var final_a := final_butt if strike_side > 0 else final_tip
 	var final_b := final_tip if strike_side > 0 else final_butt
-	# Interpolate the centre and orientation, maintaining a rigid-length rod.
+	# Interpolate as a rigid stick: no shortening or endpoint swap.
 	var ready_direction := (ready_b - ready_a).normalized()
 	var final_direction := (final_b - final_a).normalized()
 	var center := ((ready_a + ready_b) * 0.5).lerp((final_a + final_b) * 0.5, turn)
@@ -467,8 +469,8 @@ func update_visuals() -> void:
 	# A small inset keeps the hands visually on the wood.
 	var left_grip := a + direction * 0.11
 	var right_grip := b - direction * 0.11
-	var left_rest := Vector3(attack_x + 0.10 + 0.16 * bend_amount, 1.44 - 0.35 * bend_amount, -0.50)
-	var right_rest := Vector3(attack_x + 0.10 + 0.16 * bend_amount, 1.44 - 0.35 * bend_amount, 0.53)
+	var left_rest := Vector3(attack_x + 0.05 + 0.10 * bend_amount, 1.28 - 0.20 * bend_amount, -0.48)
+	var right_rest := Vector3(attack_x + 0.05 + 0.10 * bend_amount, 1.28 - 0.20 * bend_amount, 0.48)
 	# Keep the driving hand at its assigned end; only the opposite hand releases.
 	attack_hand_a.position = left_grip.lerp(left_rest, release_blend if strike_side < 0 else 0.0)
 	attack_hand_b.position = right_grip.lerp(right_rest, release_blend if strike_side > 0 else 0.0)
@@ -508,14 +510,17 @@ func check_sweep(previous: float, current: float, previous_guard: Array[Vector3]
 		var alpha := float(i) / float(steps)
 		var guard_a := previous_guard[0].lerp(current_guard[0], alpha)
 		var guard_b := previous_guard[1].lerp(current_guard[1], alpha)
-		if segment_distance(s[0], s[1], guard_a, guard_b) <= STICK_RADIUS + GUARD_RADIUS + 0.025:
+		var tip := s[1] if strike_side > 0 else s[0]
+		# Only the forward portion can be blocked; a distant or rear section
+		# touching the guard must not count as a successful defense.
+		var forward_start := s[0].lerp(s[1], 0.76) if strike_side > 0 else s[1].lerp(s[0], 0.76)
+		if segment_distance(forward_start, tip, guard_a, guard_b) <= STICK_RADIUS + GUARD_RADIUS + 0.025:
 			return "block"
 		# Each strike is checked only against its selected near/far leg lane.
 		var target_z := -float(strike_side) * 0.34
 		var leg_a := Vector3(defender_x, 0.12, target_z)
 		var leg_b := Vector3(defender_x, 0.77, target_z)
-		var tip := s[1] if strike_side > 0 else s[0]
-		if segment_distance(tip, tip, leg_a, leg_b) <= 0.20:
+		if segment_distance(tip, tip, leg_a, leg_b) <= 0.23:
 			return "leg"
 	return ""
 
