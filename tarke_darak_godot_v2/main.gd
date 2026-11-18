@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v5.2 - across-shoulders ready grip"
+const BUILD_LABEL := "v5.3 - raised forward ready grip"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -320,13 +320,13 @@ func start_swing() -> void:
  say("Swing: physical terkeh sweeps toward the defender.")
 
 func strike_ends(p: float) -> Array[Vector3]:
- # Ready stance: the staff runs ACROSS the shoulders (Z axis), not
+ # Ready stance: staff is raised above and IN FRONT of the face, running ACROSS the shoulders (Z axis), not
  # from behind the head toward the face (X axis).
  # The hands are on opposite sides of the head, at the two rod ends.
  var t := clampf(p, 0.0, 1.0)
  var turn := smoothstep(0.03, 0.48, t)
  var arc := smoothstep(0.0, 1.0, t)
- var ready_center := Vector3(attack_x + 0.03, 2.48, 0.0)
+ var ready_center := Vector3(attack_x + 0.52, 2.78, 0.0)
  var ready_direction := Vector3(0.0, 0.0, 1.0)
  var distance := defender_x - attack_x
  var tip_reach := minf(2.02, distance - 0.18)
