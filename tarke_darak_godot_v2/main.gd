@@ -150,7 +150,7 @@ func person(name: String, x: float, face_right: bool) -> Node3D:
 	for side in [-1.0, 1.0]:
 		var trouser := block(root, "Debit trousers", Vector3(0.33, 0.91, 0.34), Vector3(0.0, 0.70, side * 0.34), black)
 		var shoe := block(root, "Giveh", Vector3(0.40, 0.18, 0.44), Vector3((0.08 if face_right else -0.08), 0.12, side * 0.34), cloth)
-		var right_side := side > 0.0 if face_right else side < 0.0
+		var right_side: bool = (side > 0.0) if face_right else (side < 0.0)
 		var side_label := "R" if right_side else "L"
 		var side_color := Color(1.0, 0.18, 0.16) if right_side else Color(0.15, 0.48, 1.0)
 		add_joint_debug_label(trouser, side_label, side_color, Vector3(0.0, -0.04, 0.25))
