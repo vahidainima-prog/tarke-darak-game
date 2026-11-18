@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v7.1 - fixed stance and deeper lean"
+const BUILD_LABEL := "v7.2 - timed left-right darak defense"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -39,6 +39,9 @@ var feint_depth := 0.0
 var feint_target := 0.0
 var guard_shift := 0.0
 var guard_target := 0.0
+var guard_window := 0.0
+var guard_cooldown := 0.0
+var guard_side := 0
 var score_hit := 0
 var score_block := 0
 var status: Label
@@ -293,7 +296,7 @@ func _ready() -> void:
 	detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(detail)
 	var footer := Label.new()
-	footer.text = "A/D: move | TAB: switch | C: camera | W/S: darak | J/L: strike side | SPACE: swing | R: reset"
+	footer.text = "A/D: move | TAB: switch | C: camera | DEFENSE W=blue L, S=red R (timed) | J/L: attack side | SPACE: swing | R: reset"
 	footer.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	footer.offset_top = -43
 	footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -325,6 +328,9 @@ func _input(event: InputEvent) -> void:
 				guard_shift = 0.0
 				guard_velocity = 0.0
 				guard_target = 0.0
+				guard_window = 0.0
+				guard_cooldown = 0.0
+				guard_side = 0
 				say("DEFENSE: A/D move defender; W/S steer darak; SPACE starts opponent." if defending else "ATTACK: A/D move; J/L feint; SPACE swing.")
 			KEY_R:
 				defending = false
@@ -339,6 +345,9 @@ func _input(event: InputEvent) -> void:
 				guard_shift = 0.0
 				guard_velocity = 0.0
 				guard_target = 0.0
+				guard_window = 0.0
+				guard_cooldown = 0.0
+				guard_side = 0
 				feint_depth = 0.0
 				feint_target = 0.0
 				score_hit = 0
@@ -354,11 +363,23 @@ func _input(event: InputEvent) -> void:
 					strike_side = -1
 					feint_target = FEINT_DEPTH_LIMIT
 					say("L: RIGHT-hand drive -> defender LEFT / blue L leg.")
+			KEY_W, KEY_S:
+				if defending and guard_cooldown <= 0.0:
+					guard_side = 1 if event.keycode == KEY_W else -1
+					guard_target = float(guard_side)
+					guard_window = 0.42
+					guard_cooldown = 0.60
+					say("Darak: LEFT / blue L" if guard_side > 0 else "Darak: RIGHT / red R")
 			KEY_SPACE:
 				if swing < 0.0 and recovery < 0.0 and opponent_delay < 0.0:
 					if defending:
-						opponent_delay = 0.55
-						say("Watch the opponent. W/S moves the darak across the leg target.")
+						opponent_delay = 0.72
+						strike_side = -1 if randi_range(0, 1) == 0 else 1
+						guard_window = 0.0
+						guard_cooldown = 0.0
+						guard_side = 0
+						guard_target = 0.0
+						say("Incoming: LEFT / blue L! Press W at the right time." if strike_side < 0 else "Incoming: RIGHT / red R! Press S at the right time.")
 					else:
 						start_swing()
 
@@ -434,12 +455,12 @@ func strike_tip(p: float) -> Vector3:
 	return ends[1] if strike_side > 0 else ends[0]
 
 func guard_ends() -> Array[Vector3]:
-	# One grip always follows the defender's hand. The lower end pivots across the shins.
-	# Guard is held slightly ahead of the defender (toward the attacker) and camera.
-	var grip := Vector3(defender_x - 0.48, 1.39, 0.18 + guard_shift * 0.20)
-	var bottom := Vector3(defender_x - 0.69 + guard_shift * 0.55, 0.10, 0.18 + guard_shift * 0.62)
-	var top := grip + (grip - bottom).normalized() * 0.55
-	return [bottom, top]
+	# Vertical two-hand game guard: W camera-side (+Z), S far-side (-Z).
+	var lane := guard_shift * 0.47
+	var bottom := Vector3(defender_x - 0.32, 0.10, lane)
+	var top := Vector3(defender_x - 0.34, 1.76, lane)
+	var endpoints: Array[Vector3] = [bottom, top]
+	return endpoints
 
 func animate_footwork(character: Node3D, phase: float, motion: float, swing_pose: float, facing: float) -> void:
 	# Both feet stay planted during attacks. A fixed staggered stance
@@ -557,7 +578,7 @@ func check_sweep(previous: float, current: float, previous_guard: Array[Vector3]
 		# Only the forward portion can be blocked; a distant or rear section
 		# touching the guard must not count as a successful defense.
 		var forward_start: Vector3 = s[0].lerp(s[1], 0.76) if strike_side > 0 else s[1].lerp(s[0], 0.76)
-		if segment_distance(forward_start, tip, guard_a, guard_b) <= STICK_RADIUS + GUARD_RADIUS + 0.025:
+		if (not defending or (guard_window > 0.0 and guard_side == -strike_side)) and segment_distance(forward_start, tip, guard_a, guard_b) <= STICK_RADIUS + GUARD_RADIUS + 0.025:
 			return "block"
 		# Each strike is checked only against its selected near/far leg lane.
 		var target_z := -float(strike_side) * 0.34
@@ -600,17 +621,17 @@ func _physics_process(delta: float) -> void:
 			defender_x = maxf(maxf(DEFENDER_MIN_X, attack_x + MIN_FIGHTER_GAP), defender_x - 1.8 * delta)
 		if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
 			defender_x = minf(DEFENDER_MAX_X, defender_x + 1.8 * delta)
-		if Input.is_key_pressed(KEY_W):
-			guard_target = minf(0.53, guard_target + delta * 1.65)
-		if Input.is_key_pressed(KEY_S):
-			guard_target = maxf(-0.53, guard_target - delta * 1.65)
+		guard_window = maxf(0.0, guard_window - delta)
+		guard_cooldown = maxf(0.0, guard_cooldown - delta)
+		if guard_window <= 0.0:
+			guard_target = 0.0
 		# Critically damped hand-guided guard: the staff follows, never detaches.
 		var omega := 9.0
 		# Exact critically damped spring step for constant target; stable across frame rates.
 		var error := guard_shift - guard_target
 		var decay := exp(-omega * delta)
 		var temp := (guard_velocity + omega * error) * delta
-		guard_shift = clampf(guard_target + (error + temp) * decay, -0.53, 0.53)
+		guard_shift = clampf(guard_target + (error + temp) * decay, -1.0, 1.0)
 		guard_velocity = (guard_velocity - omega * temp) * decay
 		if opponent_delay >= 0.0:
 			opponent_delay -= delta
@@ -669,4 +690,4 @@ func _physics_process(delta: float) -> void:
 	update_visuals()
 	update_camera(delta)
 	header.text = BUILD_LABEL + "  |  " + ("DEFENSE TEST" if defending else "ATTACK TEST") + "  |  Hit: %d  Block: %d" % [score_hit, score_block]
-	detail.text = "Target: %s leg  |  Distance: %.2f m  |  Guard: %.2f m  |  Yellow dot = tip" % [("RIGHT / red R / J" if strike_side > 0 else "LEFT / blue L / L"), defender_x - attack_x, guard_shift]
+	detail.text = "Target: %s leg | Distance: %.2f m | Guard: %.2f | Window: %.2f s | Yellow dot = tip" % [("RIGHT / red R / J" if strike_side > 0 else "LEFT / blue L / L"), defender_x - attack_x, guard_shift, guard_window]
