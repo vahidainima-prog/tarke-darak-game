@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v5.4 - forehead ready pose and split strike lanes"
+const BUILD_LABEL := "v5.5 - tip-led strikes to opposite sides"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -296,12 +296,12 @@ func _input(event: InputEvent) -> void:
     if not defending and swing < 0.0 and recovery < 0.0:
      strike_side = 1
      feint_target = -0.60
-     say("LEFT-hand drive: right hand releases; tip crosses opposite side.")
+     say("J: LEFT target lane; left hand drives the stick tip.")
    KEY_L:
     if not defending and swing < 0.0 and recovery < 0.0:
      strike_side = -1
      feint_target = FEINT_DEPTH_LIMIT
-     say("RIGHT-hand drive: left hand releases; tip crosses opposite side.")
+     say("L: RIGHT target lane; right hand drives the stick tip.")
    KEY_SPACE:
     if swing < 0.0 and recovery < 0.0 and opponent_delay < 0.0:
      if defending:
@@ -320,26 +320,24 @@ func start_swing() -> void:
  say("Swing: physical terkeh sweeps toward the defender.")
 
 func strike_ends(p: float) -> Array[Vector3]:
- # Ready stance: staff is raised above and IN FRONT of the face, running ACROSS the shoulders (Z axis), not
- # from behind the head toward the face (X axis).
- # The hands are on opposite sides of the head, at the two rod ends.
+ # Ready: horizontal across the forehead, each hand at an opposite end.
+ # Strike: keep the driving hand on the REAR end, with the TIP forward
+ # at the selected side of the opponent. Never lead with the fist.
  var t := clampf(p, 0.0, 1.0)
- var turn := smoothstep(0.03, 0.48, t)
- var arc := smoothstep(0.0, 1.0, t)
+ var turn := smoothstep(0.02, 0.78, t)
  var ready_center := Vector3(attack_x + 0.56, 2.48, 0.0)
- var ready_direction := Vector3(0.0, 0.0, 1.0)
- var distance := defender_x - attack_x
- var tip_reach := minf(2.02, distance - 0.18)
- var tip_x := attack_x + lerpf(1.125, tip_reach, arc)
- var tip_y := lerpf(2.48, 0.43, smoothstep(0.0, 0.75, t))
- var tip_z := float(strike_side) * lerpf(0.0, 0.34, arc)
- var angle := lerpf(0.0, -0.38, arc)
- var strike_direction := Vector3(cos(angle), sin(angle), float(strike_side) * 0.48 * arc).normalized()
- var strike_tip := Vector3(tip_x, tip_y, tip_z)
- var strike_center := strike_tip - strike_direction * (STICK_LENGTH * 0.5)
- var center := ready_center.lerp(strike_center, turn)
- var direction := ready_direction.lerp(strike_direction, turn).normalized()
- return [center - direction * (STICK_LENGTH * 0.5), center + direction * (STICK_LENGTH * 0.5)]
+ var ready_a := ready_center + Vector3(0.0, 0.0, -STICK_LENGTH * 0.5)
+ var ready_b := ready_center + Vector3(0.0, 0.0, STICK_LENGTH * 0.5)
+ # Opposite side lanes: J goes to negative Z, L to positive Z.
+ var target_side := -float(strike_side)
+ var butt := Vector3(attack_x + 0.38, 1.20, -target_side * 0.18)
+ var strike_direction := Vector3(1.92, -0.78, target_side * 0.55).normalized()
+ var tip := butt + strike_direction * STICK_LENGTH
+ # J: left hand holds rear A, tip is B.
+ # L: right hand holds rear B, tip is A.
+ var final_a := butt if strike_side > 0 else tip
+ var final_b := tip if strike_side > 0 else butt
+ return [ready_a.lerp(final_a, turn), ready_b.lerp(final_b, turn)]
 
 func guard_ends() -> Array[Vector3]:
  # One grip always follows the defender's hand. The lower end pivots across the shins.
@@ -453,7 +451,7 @@ func check_sweep(previous: float, current: float, previous_guard: Array[Vector3]
   if segment_distance(s[0], s[1], guard_a, guard_b) <= STICK_RADIUS + GUARD_RADIUS + 0.025:
    return "block"
   # Each strike is checked only against its selected near/far leg lane.
-  var target_z := float(strike_side) * 0.34
+  var target_z := -float(strike_side) * 0.38
   var leg_a := Vector3(defender_x - 0.12, 0.12, target_z)
   var leg_b := Vector3(defender_x - 0.12, 0.77, target_z)
   if segment_distance(s[0], s[1], leg_a, leg_b) <= 0.20:
@@ -562,4 +560,4 @@ func _physics_process(delta: float) -> void:
  update_visuals()
  update_camera(delta)
  header.text = BUILD_LABEL + "  |  " + ("DEFENSE TEST" if defending else "ATTACK TEST") + "  |  Hit: %d  Block: %d" % [score_hit, score_block]
- detail.text = "Target: %s leg  |  Distance: %.2f m  |  Guard side: %.2f m  |  W/S: defend" % [("near" if strike_side > 0 else "far"), defender_x - attack_x, guard_shift]
+ detail.text = "Target: %s side  |  Distance: %.2f m  |  Guard side: %.2f m  |  W/S: defend" % [("LEFT / J" if strike_side > 0 else "RIGHT / L"), defender_x - attack_x, guard_shift]
