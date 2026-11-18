@@ -2,10 +2,11 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v8.7 - real fighter position swap"
+const BUILD_LABEL := "v8.8 - W/S movement, Q/E guard, smooth swap"
 const DEF_X := 1.55
 const STRIKES_PER_TURN := 2
 const STRIKE_TIME_LIMIT := 20.0
+const SWAP_DURATION := 1.15
 const AI_DIFFICULTY := "MEDIUM"
 const ARENA_LEFT := -4.30
 const ARENA_RIGHT := 3.30
@@ -72,6 +73,9 @@ var ai_attack_wait := 0.95
 var ai_fake_wait := 0.0
 var ai_fake_used := false
 var strike_time_left := STRIKE_TIME_LIMIT
+var swap_time := 0.0
+var swap_attacker_from := Vector3.ZERO
+var swap_defender_from := Vector3.ZERO
 var ai_step_target := 2.10
 var ai_step_wait := 0.0
 var status: Label
@@ -373,7 +377,7 @@ func _ready() -> void:
 	impact_banner.visible = false
 	layer.add_child(impact_banner)
 	var footer := Label.new()
-	footer.text = "A/D move | W/S guard | J/L side, F fake, SPACE strike | C camera | R reset"
+	footer.text = "W/S forward/back | Q/E guard | J/L strike side | F fake | SPACE strike | C camera | R reset"
 	footer.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	footer.offset_top = -43
 	footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -416,6 +420,7 @@ func _input(event: InputEvent) -> void:
 			KEY_TAB:
 				say("Turns change automatically after two strikes. Press R to restart.")
 			KEY_R:
+				swap_time = 0.0
 				defending = false
 				# Restore Vahid to the left attack role on reset.
 				if attacker.name != "Vahid":
@@ -460,29 +465,29 @@ func _input(event: InputEvent) -> void:
 				defender_out_penalized = false
 				say("Reset. Move closer before striking.")
 			KEY_J:
-				if not defending and not pending_turn_change and swing < 0.0 and recovery < 0.0:
+				if not defending and swap_time <= 0.0 and not pending_turn_change and swing < 0.0 and recovery < 0.0:
 					strike_side = 1
 					feint_target = -0.60
 					say("J: LEFT-hand drive -> defender RIGHT / red R leg.")
 			KEY_L:
-				if not defending and swing < 0.0 and recovery < 0.0:
+				if not defending and swap_time <= 0.0 and swing < 0.0 and recovery < 0.0:
 					strike_side = -1
 					feint_target = FEINT_DEPTH_LIMIT
 					say("L: RIGHT-hand drive -> defender LEFT / blue L leg.")
 			KEY_F:
-				if not defending and not pending_turn_change and swing < 0.0 and recovery < 0.0 and fake_cooldown <= 0.0:
+				if not defending and swap_time <= 0.0 and not pending_turn_change and swing < 0.0 and recovery < 0.0 and fake_cooldown <= 0.0:
 					fake_timer = 0.48
 					fake_cooldown = 1.10
 					say("FEINT! A fake windup with no hit. Follow with SPACE.")
-			KEY_W, KEY_S:
-				if defending and guard_cooldown <= 0.0:
-					guard_side = 1 if event.keycode == KEY_W else -1
+			KEY_Q, KEY_E:
+				if defending and swap_time <= 0.0 and guard_cooldown <= 0.0:
+					guard_side = 1 if event.keycode == KEY_Q else -1
 					guard_target = float(guard_side)
 					guard_window = 0.58
 					guard_cooldown = 0.48
 					say("Darak: LEFT / blue L" if guard_side > 0 else "Darak: RIGHT / red R")
 			KEY_SPACE:
-				if not defending and not pending_turn_change and swing < 0.0 and recovery < 0.0 and opponent_delay < 0.0 and fake_timer <= 0.0:
+				if not defending and swap_time <= 0.0 and not pending_turn_change and swing < 0.0 and recovery < 0.0 and opponent_delay < 0.0 and fake_timer <= 0.0:
 					start_swing()
 
 func show_impact(message: String, color: Color) -> void:
@@ -511,6 +516,9 @@ func update_swing_trail() -> void:
 func change_turn() -> void:
 	pending_turn_change = false
 	strikes_used = 0
+	swap_attacker_from = defender.position
+	swap_defender_from = attacker.position
+	swap_time = SWAP_DURATION
 	defending = not defending
 	# Exchange the actual fighter nodes between physical roles. The attack
 	# and defense animations still use the left/right role coordinates.
@@ -533,7 +541,7 @@ func change_turn() -> void:
 	ai_attack_wait = 1.15
 	ai_fake_used = false
 	ai_step_wait = 0.0
-	say("YOUR DEFENSE TURN: W/S guard against AI." if defending else "YOUR ATTACK TURN: J/L choose side, SPACE strike.")
+	say("YOUR DEFENSE TURN: Q/E guard, W/S move." if defending else "YOUR ATTACK TURN: J/L side, SPACE strike, W/S move.")
 
 
 func start_swing() -> void:
@@ -779,7 +787,7 @@ func update_camera(delta: float) -> void:
 		# Follow the character the player currently controls.
 		# During attack, camera looks along +X from behind the attacker.
 		# During defense, it looks along -X from behind the defender.
-		var controlled_x: float = defender_x if defending else attack_x
+		var controlled_x: float = defender.position.x if defending else attacker.position.x
 		var facing: float = -1.0 if defending else 1.0
 		target_position = Vector3(controlled_x - facing * 4.55, 4.15, 0.18)
 		target_focus = Vector3(controlled_x + facing * 1.95, 1.00, 0.0)
@@ -791,6 +799,14 @@ func update_camera(delta: float) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if swap_time > 0.0:
+		swap_time = maxf(0.0, swap_time - delta)
+		update_visuals()
+		var progress := smoothstep(0.0, 1.0, 1.0 - swap_time / SWAP_DURATION)
+		attacker.position = swap_attacker_from.lerp(Vector3(attack_x, 0.0, 0.0), progress)
+		defender.position = swap_defender_from.lerp(Vector3(defender_x, 0.0, 0.0), progress)
+		update_camera(delta)
+		return
 	var previous_guard := guard_ends()
 	fake_timer = maxf(0.0, fake_timer - delta)
 	fake_cooldown = maxf(0.0, fake_cooldown - delta)
@@ -824,17 +840,15 @@ func _physics_process(delta: float) -> void:
 				say("Time expired: one strike lost. Next chance!")
 	var before_attack := attack_x
 	var before_defender := defender_x
-	if swing < 0.0 and recovery < 0.0 and not defending and not pending_turn_change:
-		if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
-			attack_x = minf(minf(MAX_X, defender_x - MIN_FIGHTER_GAP), attack_x + 2.0 * delta)
-		if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
-			attack_x = maxf(MIN_X, attack_x - 2.0 * delta)
+	if swing < 0.0 and recovery < 0.0 and not pending_turn_change:
+		# W always advances toward the opponent, S always retreats,
+		# independent of which side of the arena Vahid occupies.
+		var move_axis := float(Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP)) - float(Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN))
+		if not defending:
+			attack_x = clampf(attack_x + move_axis * 2.0 * delta, MIN_X, minf(MAX_X, defender_x - MIN_FIGHTER_GAP))
+		else:
+			defender_x = clampf(defender_x - move_axis * 1.8 * delta, maxf(DEFENDER_MIN_X, attack_x + MIN_FIGHTER_GAP), DEFENDER_MAX_X)
 	if defending:
-		# In defense mode A/D move the defender; never allow bodies to overlap.
-		if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
-			defender_x = maxf(maxf(DEFENDER_MIN_X, attack_x + MIN_FIGHTER_GAP), defender_x - 1.8 * delta)
-		if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
-			defender_x = minf(DEFENDER_MAX_X, defender_x + 1.8 * delta)
 		guard_window = maxf(0.0, guard_window - delta)
 		guard_cooldown = maxf(0.0, guard_cooldown - delta)
 		if guard_window <= 0.0:
