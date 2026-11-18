@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v8.5 - adaptive AI and strike timer"
+const BUILD_LABEL := "v8.6 - visible strike countdown"
 const DEF_X := 1.55
 const STRIKES_PER_TURN := 2
 const STRIKE_TIME_LIMIT := 20.0
@@ -58,6 +58,7 @@ var defender_out_time := 0.0
 var attacker_out_penalized := false
 var defender_out_penalized := false
 var score_board: Label
+var strike_clock_label: Label
 var impact_banner: Label
 var impact_banner_time := 0.0
 var trail_segments: Array[MeshInstance3D] = []
@@ -344,6 +345,19 @@ func _ready() -> void:
 	scoreboard_panel.offset_top = 124
 	scoreboard_panel.offset_bottom = 211
 	layer.add_child(scoreboard_panel)
+	var clock_panel := PanelContainer.new()
+	clock_panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	clock_panel.offset_left = 16
+	clock_panel.offset_right = 205
+	clock_panel.offset_top = 132
+	clock_panel.offset_bottom = 215
+	layer.add_child(clock_panel)
+	strike_clock_label = Label.new()
+	strike_clock_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	strike_clock_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	strike_clock_label.add_theme_font_size_override("font_size", 32)
+	strike_clock_label.text = "20s"
+	clock_panel.add_child(strike_clock_label)
 	score_board = Label.new()
 	score_board.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	score_board.add_theme_font_size_override("font_size", 20)
@@ -925,7 +939,9 @@ func _physics_process(delta: float) -> void:
 	last_defender_x = defender_x - defend_velocity / 1.8
 	var attacker_warning := ("  OUT -100" if attacker_out_penalized else "  OUT %d" % ceili(OUT_LIMIT - attacker_out_time)) if attacker_out_time > 0.0 else ""
 	var defender_warning := ("  OUT -100" if defender_out_penalized else "  OUT %d" % ceili(OUT_LIMIT - defender_out_time)) if defender_out_time > 0.0 else ""
-	score_board.text = "VAHID  %d%s\nPEDRAM  %d%s\nTURN  %s  %d/%d\nSTRIKE CLOCK  %ds\nAI  %s" % [score_hit, attacker_warning, score_block, defender_warning, "PEDRAM" if defending else "VAHID", strikes_used, STRIKES_PER_TURN, ceili(strike_time_left), AI_DIFFICULTY]
+	score_board.text = "VAHID  %d%s\nPEDRAM  %d%s\nTURN  %s  %d/%d\nAI  %s" % [score_hit, attacker_warning, score_block, defender_warning, "PEDRAM" if defending else "VAHID", strikes_used, STRIKES_PER_TURN, AI_DIFFICULTY]
+	strike_clock_label.text = "TIME  %02ds" % ceili(strike_time_left)
+	strike_clock_label.add_theme_color_override("font_color", Color(1.0, 0.28, 0.23) if strike_time_left <= 5.0 else Color(1.0, 0.94, 0.64))
 	update_fighter_names()
 	update_visuals()
 	update_swing_trail()
