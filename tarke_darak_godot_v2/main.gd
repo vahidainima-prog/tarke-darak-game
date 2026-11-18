@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v5.5 - tip-led strikes to opposite sides"
+const BUILD_LABEL := "v5.6 - two visible leg lanes"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -148,8 +148,8 @@ func person(name: String, x: float, face_right: bool) -> Node3D:
  for off in [-0.18, -0.05, 0.10, 0.22]:
   block(waist, "Stripe", Vector3(0.043, 0.85, 0.39), Vector3(off, 0.43, 0), black)
  for side in [-1.0, 1.0]:
-  block(root, "Debit trousers", Vector3(0.33, 0.91, 0.43), Vector3(side * 0.18, 0.70, 0), black)
-  block(root, "Giveh", Vector3(0.40, 0.18, 0.52), Vector3(side * 0.18 + (0.08 if face_right else -0.08), 0.12, 0.09), cloth)
+  block(root, "Debit trousers", Vector3(0.33, 0.91, 0.34), Vector3(0.0, 0.70, side * 0.34), black)
+  block(root, "Giveh", Vector3(0.40, 0.18, 0.44), Vector3((0.08 if face_right else -0.08), 0.12, side * 0.34), cloth)
  block(waist, "Head", Vector3(0.36, 0.38, 0.37), Vector3(0, 1.12, 0), skin)
  block(waist, "Hat", Vector3(0.44, 0.23, 0.44), Vector3(0, 1.40, 0), black)
  block(waist, "Nose-facing", Vector3(0.12, 0.11, 0.15), Vector3(0.22 if face_right else -0.22, 1.13, 0.06), skin)
@@ -330,9 +330,11 @@ func strike_ends(p: float) -> Array[Vector3]:
  var ready_b := ready_center + Vector3(0.0, 0.0, STICK_LENGTH * 0.5)
  # Opposite side lanes: J goes to negative Z, L to positive Z.
  var target_side := -float(strike_side)
- var butt := Vector3(attack_x + 0.38, 1.20, -target_side * 0.18)
- var strike_direction := Vector3(1.92, -0.78, target_side * 0.55).normalized()
- var tip := butt + strike_direction * STICK_LENGTH
+ var tip_x := minf(defender_x - 0.12, attack_x + 2.08)
+ var tip := Vector3(tip_x, 0.44, target_side * 0.34)
+ # The rear hand stays near the attacker while the far TIP selects the leg.
+ var strike_direction := Vector3(1.96, -0.78, target_side * 0.20).normalized()
+ var butt := tip - strike_direction * STICK_LENGTH
  # J: left hand holds rear A, tip is B.
  # L: right hand holds rear B, tip is A.
  var final_a := butt if strike_side > 0 else tip
@@ -362,8 +364,8 @@ func animate_footwork(character: Node3D, phase: float, motion: float, swing_pose
    # There are two nodes of each name; Godot auto-renames the second one.
    pass
   if n.name.begins_with("Debit trousers") or n.name.begins_with("Giveh"):
-   var side := -1.0 if n.position.x < 0.0 else 1.0
-   var base_x := side * 0.18 + (facing * 0.08 if n.name.begins_with("Giveh") else 0.0)
+   var side := -1.0 if n.position.z < 0.0 else 1.0
+   var base_x := facing * 0.08 if n.name.begins_with("Giveh") else 0.0
    var step := sin(phase + (0.0 if side < 0.0 else PI))
    n.position.x = base_x + 0.19 * stride * step + facing * 0.08 * accent
    n.position.y = (0.12 if n.name.begins_with("Giveh") else 0.70) + 0.08 * stride * maxf(0.0, step)
@@ -451,9 +453,9 @@ func check_sweep(previous: float, current: float, previous_guard: Array[Vector3]
   if segment_distance(s[0], s[1], guard_a, guard_b) <= STICK_RADIUS + GUARD_RADIUS + 0.025:
    return "block"
   # Each strike is checked only against its selected near/far leg lane.
-  var target_z := -float(strike_side) * 0.38
-  var leg_a := Vector3(defender_x - 0.12, 0.12, target_z)
-  var leg_b := Vector3(defender_x - 0.12, 0.77, target_z)
+  var target_z := -float(strike_side) * 0.34
+  var leg_a := Vector3(defender_x, 0.12, target_z)
+  var leg_b := Vector3(defender_x, 0.77, target_z)
   if segment_distance(s[0], s[1], leg_a, leg_b) <= 0.20:
    return "leg"
  return ""
