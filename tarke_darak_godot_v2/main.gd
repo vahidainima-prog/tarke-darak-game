@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v6.0 - outside-leg one-hand strike"
+const BUILD_LABEL := "v6.1 - outside-lane waypoint strike"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -369,32 +369,40 @@ func start_swing() -> void:
 	say("Swing: physical terkeh sweeps toward the defender.")
 
 func strike_ends(p: float) -> Array[Vector3]:
-	# Ready: both hands on opposite ends, staff across the forehead.
-	# L key = attacker RIGHT hand (+Z) drives the butt at endpoint B;
-	# the TIP (endpoint A) goes to defender LEFT outside (+Z, camera side).
-	# J key = attacker LEFT hand (-Z) drives endpoint A;
-	# the TIP (endpoint B) goes to defender RIGHT outside (-Z).
+	# Anatomical lanes: L key/right hand -> defender L/camera (+Z).
+	# J key/left hand -> defender R/far side (-Z).
+	# The hand always holds the BUTT; only the opposite TIP hits.
 	var t := clampf(p, 0.0, 1.0)
-	var turn := smoothstep(0.02, 0.86, t)
+	var side := -float(strike_side)
 	var ready_center := Vector3(attack_x + 0.56, 2.48, 0.0)
 	var ready_a := ready_center + Vector3(0.0, 0.0, -STICK_LENGTH * 0.5)
 	var ready_b := ready_center + Vector3(0.0, 0.0, STICK_LENGTH * 0.5)
-	var target_side := -float(strike_side)
-	# Outside of the defender's left/right leg, not through the torso.
-	var target_z := target_side * 0.48
-	var tip_x := minf(defender_x - 0.10, attack_x + 2.32)
-	var final_tip := Vector3(tip_x, 0.43, target_z)
-	# The hand stays behind the tip, on the attacker's side of the gap.
-	var forward := Vector3(1.94, -0.66, target_side * 0.38).normalized()
-	var final_butt := final_tip - forward * STICK_LENGTH
-	var final_a := final_butt if strike_side > 0 else final_tip
-	var final_b := final_tip if strike_side > 0 else final_butt
-	# Interpolate as a rigid stick: no shortening or endpoint swap.
-	var ready_direction := (ready_b - ready_a).normalized()
-	var final_direction := (final_b - final_a).normalized()
-	var center := ((ready_a + ready_b) * 0.5).lerp((final_a + final_b) * 0.5, turn)
-	var direction := ready_direction.lerp(final_direction, turn).normalized()
-	return [center - direction * (STICK_LENGTH * 0.5), center + direction * (STICK_LENGTH * 0.5)]
+	var ready_butt := ready_a if strike_side > 0 else ready_b
+	var ready_tip := ready_b if strike_side > 0 else ready_a
+	# First move the TIP into the outside lane while still near attacker.
+	# This avoids cutting through the middle of the defender on the way down.
+	var waypoint_butt := Vector3(attack_x + 0.24, 1.85, side * 1.18)
+	var waypoint_direction := Vector3(1.42, -0.38, -side * 0.48).normalized()
+	var waypoint_tip := waypoint_butt + waypoint_direction * STICK_LENGTH
+	# Final: rear hand remains on the attacker's side; tip approaches
+	# the OUTSIDE of the labeled leg rather than crossing the belly.
+	var final_tip := Vector3(minf(defender_x - 0.08, attack_x + 2.35), 0.43, side * 0.54)
+	var final_direction := Vector3(1.95, -0.66, -side * 0.23).normalized()
+	var final_butt := final_tip - final_direction * STICK_LENGTH
+	var butt: Vector3
+	var tip: Vector3
+	if t < 0.38:
+		var windup := smoothstep(0.0, 0.38, t)
+		butt = ready_butt.lerp(waypoint_butt, windup)
+		tip = ready_tip.lerp(waypoint_tip, windup)
+	else:
+		var follow_through := smoothstep(0.38, 0.90, t)
+		butt = waypoint_butt.lerp(final_butt, follow_through)
+		tip = waypoint_tip.lerp(final_tip, follow_through)
+	# Rebuild a constant-length staff from the driving-hand end.
+	var axis := (tip - butt).normalized()
+	tip = butt + axis * STICK_LENGTH
+	return [butt, tip] if strike_side > 0 else [tip, butt]
 
 func strike_tip(p: float) -> Vector3:
 	var ends := strike_ends(p)
