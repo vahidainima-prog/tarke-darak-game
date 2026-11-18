@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v9.4 - full arena pursuit movement"
+const BUILD_LABEL := "v9.5 - escape and referee restart"
 const DEF_X := 1.55
 const STRIKES_PER_TURN := 2
 const STRIKE_TIME_LIMIT := 20.0
@@ -92,6 +92,8 @@ var swap_attacker_from := Vector3.ZERO
 var swap_defender_from := Vector3.ZERO
 var ai_step_target := 2.10
 var ai_step_wait := 0.0
+var ai_escape_time := 0.0
+var ai_escape_cooldown := 5.0
 var status: Label
 var header: Label
 var detail: Label
@@ -543,6 +545,8 @@ func _input(event: InputEvent) -> void:
 				ai_fake_used = false
 				strike_time_left = STRIKE_TIME_LIMIT
 				ai_step_wait = 0.0
+				ai_escape_time = 0.0
+				ai_escape_cooldown = 5.0
 				attack_x = -2.7
 				defender_x = DEF_X
 				swing = -1.0
@@ -674,6 +678,38 @@ func update_swing_trail() -> void:
 			place_rod(segment, trail_points[i], trail_points[i + 1])
 
 
+func referee_restart() -> void:
+	# The referee separates fighters after an out-of-bounds penalty,
+	# so standing on the line cannot trap the opponent indefinitely.
+	attack_x = -2.7
+	defender_x = DEF_X
+	ai_escape_time = 0.0
+	ai_escape_cooldown = 5.0
+	ai_step_wait = 0.0
+	attacker_out_time = 0.0
+	defender_out_time = 0.0
+	attacker_out_penalized = false
+	defender_out_penalized = false
+	fake_timer = 0.0
+	feint_guard_bait = false
+	ai_guard_exposed = 0.0
+	swing = -1.0
+	recovery = -1.0
+	active_attack = false
+	impact_hold = 0.0
+	ai_guard_delay = -1.0
+	guard_window = 0.0
+	guard_target = 0.0
+	guard_shift = 0.0
+	guard_side = 0
+	opponent_delay = -1.0
+	ai_attack_wait = 1.0
+	strike_time_left = STRIKE_TIME_LIMIT
+	if pending_turn_change:
+		change_turn()
+	say("REFEREE: out-of-bounds penalty; fighters reset to center.")
+
+
 func change_turn() -> void:
 	pending_turn_change = false
 	strikes_used = 0
@@ -702,6 +738,8 @@ func change_turn() -> void:
 	ai_attack_wait = 1.15
 	ai_fake_used = false
 	ai_step_wait = 0.0
+	ai_escape_time = 0.0
+	ai_escape_cooldown = 5.0
 	say("YOUR DEFENSE TURN: Q/E guard, W/S move." if defending else "YOUR ATTACK TURN: J/L side, SPACE strike, W/S move.")
 
 
@@ -1076,15 +1114,27 @@ func _physics_process(delta: float) -> void:
 	# player's selected strike side, feint, or visual trail.
 	if swing < 0.0 and recovery < 0.0 and not pending_turn_change:
 		ai_step_wait -= delta
+		ai_escape_cooldown = maxf(0.0, ai_escape_cooldown - delta)
+		ai_escape_time = maxf(0.0, ai_escape_time - delta)
 		if ai_step_wait <= 0.0:
 			ai_step_wait = randf_range(0.7, 1.6)
 			ai_step_target = randf_range(1.8, 2.5)
+			# Pedram may briefly flee past the right boundary under pressure.
+			# It is rare, temporary, and has a cooldown.
+			if not defending and ai_escape_cooldown <= 0.0 and defender_x > ARENA_RIGHT - 0.65 and defender_x - attack_x < 2.5 and randf() < 0.28:
+				ai_escape_time = 1.6
+				ai_escape_cooldown = randf_range(7.0, 11.0)
 		if defending:
 			var desired_attack := clampf(defender_x - ai_step_target, MIN_X, minf(MAX_X, defender_x - MIN_FIGHTER_GAP))
 			attack_x = move_toward(attack_x, desired_attack, 1.45 * delta)
 		else:
 			var desired_defense := clampf(attack_x + ai_step_target, maxf(DEFENDER_MIN_X, attack_x + MIN_FIGHTER_GAP), DEFENDER_MAX_X)
-			defender_x = move_toward(defender_x, desired_defense, 1.1 * delta)
+			if ai_escape_time > 0.0:
+				desired_defense = minf(DEFENDER_MAX_X, maxf(ARENA_RIGHT + 0.55, attack_x + MIN_FIGHTER_GAP))
+			elif defender_x > ARENA_RIGHT:
+				# Prioritize returning rather than camping outside.
+				desired_defense = maxf(attack_x + MIN_FIGHTER_GAP, ARENA_RIGHT - 0.45)
+			defender_x = move_toward(defender_x, desired_defense, 1.5 * delta)
 	# Medium AI controls the attacker during the player's defense turn.
 	if defending and not pending_turn_change and swing < 0.0 and recovery < 0.0 and opponent_delay < 0.0:
 		if defender_x - attack_x <= 2.45:
@@ -1167,6 +1217,7 @@ func _physics_process(delta: float) -> void:
 				score_hit -= OUT_PENALTY
 			attacker_out_penalized = true
 			say("ATTACKER OUT: 5 seconds outside arena! -100")
+			referee_restart()
 	else:
 		attacker_out_time = 0.0
 		attacker_out_penalized = false
@@ -1179,6 +1230,7 @@ func _physics_process(delta: float) -> void:
 				score_block -= OUT_PENALTY
 			defender_out_penalized = true
 			say("DEFENDER OUT: 5 seconds outside arena! -100")
+			referee_restart()
 	else:
 		defender_out_time = 0.0
 		defender_out_penalized = false
