@@ -2,17 +2,17 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v7.7 - marked arena and five-second out-of-bounds"
+const BUILD_LABEL := "v7.8 - larger arena and integer countdown"
 const DEF_X := 1.55
-const ARENA_LEFT := -3.45
-const ARENA_RIGHT := 2.45
+const ARENA_LEFT := -4.30
+const ARENA_RIGHT := 3.30
 const OUT_LIMIT := 5.0
 const OUT_PENALTY := 100
-const MIN_X := -5.25
+const MIN_X := -5.80
 const MAX_X := 0.35
 const MIN_FIGHTER_GAP := 1.12
 const DEFENDER_MIN_X := 0.65
-const DEFENDER_MAX_X := 4.20
+const DEFENDER_MAX_X := 4.80
 const SWING_SECONDS := 0.82
 const RECOVERY_SECONDS := 0.48
 const MAX_SWEEP_STEP := 0.025
@@ -249,12 +249,12 @@ func _ready() -> void:
 	light.light_energy = 1.25
 	light.shadow_enabled = true
 	add_child(light)
-	block(self, "Ground", Vector3(17, 0.12, 7), Vector3(0, -0.08, 0), Color(0.62, 0.49, 0.32))
+	block(self, "Ground", Vector3(20, 0.12, 8), Vector3(0, -0.08, 0), Color(0.62, 0.49, 0.32))
 	# Clearly visible arena sidelines, spanning the full fighting depth.
 	for edge_x in [ARENA_LEFT, ARENA_RIGHT]:
-		block(self, "Arena boundary", Vector3(0.085, 0.025, 6.0), Vector3(edge_x, 0.002, 0), Color(0.97, 0.91, 0.65))
+		block(self, "Arena boundary", Vector3(0.085, 0.025, 7.0), Vector3(edge_x, 0.002, 0), Color(0.97, 0.91, 0.65))
 	# Short end marks emphasize the playable area from the side camera.
-	for depth_z in [-2.85, 2.85]:
+	for depth_z in [-3.35, 3.35]:
 		block(self, "Arena end line", Vector3(ARENA_RIGHT - ARENA_LEFT, 0.025, 0.07), Vector3((ARENA_LEFT + ARENA_RIGHT) * 0.5, 0.002, depth_z), Color(0.97, 0.91, 0.65))
 	add_scenery()
 	attacker = person("Attacker facing RIGHT", attack_x, true)
@@ -292,7 +292,7 @@ func _ready() -> void:
 	defend_elbow_b = block(self, "Defender elbow far", Vector3(0.17, 0.17, 0.17), Vector3.ZERO, Color(0.66, 0.44, 0.30))
 	game_camera = Camera3D.new()
 	add_child(game_camera)
-	game_camera.position = Vector3(0, 2.45, 12.5)
+	game_camera.position = Vector3(0, 2.65, 15.5)
 	game_camera.look_at(camera_focus, Vector3.UP)
 	game_camera.fov = 53.0
 	game_camera.current = true
@@ -658,7 +658,7 @@ func check_sweep(previous: float, current: float, previous_guard: Array[Vector3]
 func update_camera(delta: float) -> void:
 	if game_camera == null:
 		return
-	var target_position := Vector3(0.0, 2.45, 12.5)
+	var target_position := Vector3(0.0, 2.65, 15.5)
 	var target_focus := Vector3(0.0, 1.45, 0.0)
 	if shoulder_camera:
 		var controlled_x := defender_x if defending else attack_x
@@ -789,8 +789,8 @@ func _physics_process(delta: float) -> void:
 		defend_step_phase += absf(defend_velocity) * delta * 8.0
 	last_attack_x = attack_x - attack_velocity / 1.8
 	last_defender_x = defender_x - defend_velocity / 1.8
-	var attacker_warning := "  OUT %.1f/5s" % minf(attacker_out_time, OUT_LIMIT) if attacker_out_time > 0.0 else ""
-	var defender_warning := "  OUT %.1f/5s" % minf(defender_out_time, OUT_LIMIT) if defender_out_time > 0.0 else ""
+	var attacker_warning := ("  OUT -100" if attacker_out_penalized else "  OUT %d" % ceili(OUT_LIMIT - attacker_out_time)) if attacker_out_time > 0.0 else ""
+	var defender_warning := ("  OUT -100" if defender_out_penalized else "  OUT %d" % ceili(OUT_LIMIT - defender_out_time)) if defender_out_time > 0.0 else ""
 	score_board.text = "ATTACKER  %d%s\nDEFENDER  %d%s" % [score_hit, attacker_warning, score_block, defender_warning]
 	update_visuals()
 	update_camera(delta)
