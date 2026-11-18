@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v8.6 - visible strike countdown"
+const BUILD_LABEL := "v8.7 - real fighter position swap"
 const DEF_X := 1.55
 const STRIKES_PER_TURN := 2
 const STRIKE_TIME_LIMIT := 20.0
@@ -397,8 +397,8 @@ func add_fighter_name(fighter: Node3D, fighter_name: String, color: Color) -> vo
 
 
 func update_fighter_names() -> void:
-	var vahid_name: Label3D = attacker.get_node("FighterName")
-	var pedram_name: Label3D = defender.get_node("FighterName")
+	var vahid_name: Label3D = get_node("Vahid/FighterName")
+	var pedram_name: Label3D = get_node("Pedram/FighterName")
 	vahid_name.text = "وحید | " + ("مدافع" if defending else "مهاجم")
 	pedram_name.text = "پدرام | " + ("مهاجم" if defending else "مدافع")
 
@@ -417,6 +417,13 @@ func _input(event: InputEvent) -> void:
 				say("Turns change automatically after two strikes. Press R to restart.")
 			KEY_R:
 				defending = false
+				# Restore Vahid to the left attack role on reset.
+				if attacker.name != "Vahid":
+					var previous_attacker := attacker
+					attacker = defender
+					defender = previous_attacker
+				attacker.rotation.y = 0.0
+				defender.rotation.y = 0.0
 				strikes_used = 0
 				pending_turn_change = false
 				ai_attack_wait = 0.95
@@ -505,6 +512,17 @@ func change_turn() -> void:
 	pending_turn_change = false
 	strikes_used = 0
 	defending = not defending
+	# Exchange the actual fighter nodes between physical roles. The attack
+	# and defense animations still use the left/right role coordinates.
+	var previous_attacker := attacker
+	attacker = defender
+	defender = previous_attacker
+	attacker.rotation.y = 0.0 if attacker.name == "Vahid" else PI
+	defender.rotation.y = PI if defender.name == "Vahid" else 0.0
+	attack_step_phase = 0.0
+	defend_step_phase = 0.0
+	last_attack_x = attack_x
+	last_defender_x = defender_x
 	strike_time_left = STRIKE_TIME_LIMIT
 	guard_shift = 0.0
 	guard_velocity = 0.0
@@ -881,7 +899,10 @@ func _physics_process(delta: float) -> void:
 		swing = minf(1.0, swing + maxf(swing_speed, 0.30) * delta)
 		var result := check_sweep(old, swing, previous_guard, guard_ends())
 		if result == "block":
-			score_block += 100
+			if defending:
+				score_hit += 100
+			else:
+				score_block += 100
 			show_impact("BLOCK +100", Color(0.34, 0.83, 1.0))
 			say("SUCCESSFUL DEFENSE: correct side and timing! Defender +100")
 			impact_hold = 0.22
@@ -891,7 +912,10 @@ func _physics_process(delta: float) -> void:
 			active_attack = false
 			swing = -1.0
 		elif result == "leg":
-			score_hit += 100
+			if defending:
+				score_block += 100
+			else:
+				score_hit += 100
 			show_impact("HIT +100", Color(1.0, 0.83, 0.30))
 			say("LEGAL CONTACT: terkeh reached below-knee target. Attacker +100")
 			impact_hold = 0.19
@@ -914,7 +938,10 @@ func _physics_process(delta: float) -> void:
 	if attack_x < ARENA_LEFT or attack_x > ARENA_RIGHT:
 		attacker_out_time += delta
 		if attacker_out_time >= OUT_LIMIT and not attacker_out_penalized:
-			score_hit -= OUT_PENALTY
+			if defending:
+				score_block -= OUT_PENALTY
+			else:
+				score_hit -= OUT_PENALTY
 			attacker_out_penalized = true
 			say("ATTACKER OUT: 5 seconds outside arena! -100")
 	else:
@@ -923,7 +950,10 @@ func _physics_process(delta: float) -> void:
 	if defender_x < ARENA_LEFT or defender_x > ARENA_RIGHT:
 		defender_out_time += delta
 		if defender_out_time >= OUT_LIMIT and not defender_out_penalized:
-			score_block -= OUT_PENALTY
+			if defending:
+				score_hit -= OUT_PENALTY
+			else:
+				score_block -= OUT_PENALTY
 			defender_out_penalized = true
 			say("DEFENDER OUT: 5 seconds outside arena! -100")
 	else:
