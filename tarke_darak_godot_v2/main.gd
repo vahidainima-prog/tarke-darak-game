@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v9.0 - Bakhtiari mountain arena"
+const BUILD_LABEL := "v9.1 - rounded fighter models"
 const DEF_X := 1.55
 const STRIKES_PER_TURN := 2
 const STRIKE_TIME_LIMIT := 20.0
@@ -177,34 +177,59 @@ func place_two_bone_arm(upper: MeshInstance3D, lower: MeshInstance3D, elbow_mesh
 	place_rod(lower, elbow, hand)
 	elbow_mesh.position = elbow
 
+func rounded_part(parent: Node3D, part_name: String, size: Vector3, at: Vector3, tint: Color) -> MeshInstance3D:
+	var part := MeshInstance3D.new()
+	part.name = part_name
+	var mesh := SphereMesh.new()
+	mesh.radius = 0.5
+	mesh.height = 1.0
+	mesh.radial_segments = 16
+	mesh.rings = 8
+	part.mesh = mesh
+	part.material_override = material(tint)
+	parent.add_child(part)
+	part.position = at
+	part.scale = size
+	return part
+
+
 func person(name: String, x: float, face_right: bool) -> Node3D:
 	var root := Node3D.new()
 	root.name = name
 	add_child(root)
 	root.position.x = x
-	var cloth := Color(0.94, 0.90, 0.77)
+	var cloth := Color(0.92, 0.87, 0.73) if name == "Vahid" else Color(0.83, 0.79, 0.67)
 	var black := Color(0.085, 0.083, 0.075)
-	var skin := Color(0.65, 0.45, 0.32)
-	# Waist pivot: torso, chogha, stripes and head share a single transform.
+	var skin := Color(0.65, 0.45, 0.32) if name == "Vahid" else Color(0.59, 0.40, 0.29)
 	var waist := Node3D.new()
 	waist.name = "WaistJoint"
 	root.add_child(waist)
 	waist.position = Vector3(0, 1.14, 0)
-	block(waist, "Chogha", Vector3(0.62, 0.90, 0.38), Vector3(0, 0.43, 0), cloth)
-	block(waist, "Chogha collar", Vector3(0.66, 0.10, 0.42), Vector3(0, 0.89, 0), Color(0.72, 0.62, 0.46))
-	for off in [-0.18, -0.05, 0.10, 0.22]:
-		block(waist, "Stripe", Vector3(0.043, 0.85, 0.39), Vector3(off, 0.43, 0), black)
+	# Rounded silhouette with shoulders and a gently tapered woven chogha.
+	rounded_part(waist, "Torso under chogha", Vector3(0.66, 0.88, 0.55), Vector3(0, 0.45, 0), cloth)
+	rounded_part(waist, "Shoulders", Vector3(0.76, 0.28, 0.67), Vector3(0, 0.77, 0), cloth)
+	rounded_part(waist, "Chogha hem", Vector3(0.71, 0.24, 0.63), Vector3(0, 0.10, 0), cloth.darkened(0.07))
+	rounded_part(waist, "Neck", Vector3(0.24, 0.25, 0.24), Vector3(0, 0.99, 0), skin)
+	for off in [-0.22, -0.08, 0.08, 0.22]:
+		block(waist, "Chogha woven stripe", Vector3(0.033, 0.70, 0.055), Vector3(0.33, 0.42, off), black)
 	for side in [-1.0, 1.0]:
-		var trouser := block(root, "Debit trousers", Vector3(0.33, 0.91, 0.34), Vector3(0.0, 0.70, side * 0.34), black)
-		var shoe := block(root, "Giveh", Vector3(0.40, 0.18, 0.44), Vector3((0.08 if face_right else -0.08), 0.12, side * 0.34), cloth)
+		# Keep the original node names: footwork animation depends on them.
+		var trouser := rounded_part(root, "Debit trousers", Vector3(0.33, 0.92, 0.32), Vector3(0.0, 0.70, side * 0.34), black)
+		var shoe := rounded_part(root, "Giveh", Vector3(0.46, 0.19, 0.37), Vector3((0.08 if face_right else -0.08), 0.12, side * 0.34), cloth)
 		var right_side: bool = (side > 0.0) if face_right else (side < 0.0)
 		var side_label := "R" if right_side else "L"
 		var side_color := Color(1.0, 0.18, 0.16) if right_side else Color(0.15, 0.48, 1.0)
 		add_joint_debug_label(trouser, side_label, side_color, Vector3(0.0, -0.04, 0.25))
 		add_joint_debug_label(shoe, side_label, side_color, Vector3(0.0, 0.23, 0.0))
-	block(waist, "Head", Vector3(0.36, 0.38, 0.37), Vector3(0, 1.12, 0), skin)
-	block(waist, "Hat", Vector3(0.44, 0.23, 0.44), Vector3(0, 1.40, 0), black)
-	block(waist, "Nose-facing", Vector3(0.12, 0.11, 0.15), Vector3(0.22 if face_right else -0.22, 1.13, 0.06), skin)
+	rounded_part(waist, "Head", Vector3(0.39, 0.44, 0.37), Vector3(0, 1.16, 0), skin)
+	rounded_part(waist, "Bakhtiari felt cap", Vector3(0.46, 0.23, 0.44), Vector3(0, 1.43, 0), black)
+	var face_dir := 1.0 if face_right else -1.0
+	rounded_part(waist, "Nose-facing", Vector3(0.14, 0.12, 0.15), Vector3(face_dir * 0.205, 1.14, 0.0), skin)
+	for side in [-1.0, 1.0]:
+		rounded_part(waist, "Ear", Vector3(0.09, 0.16, 0.10), Vector3(0.0, 1.16, side * 0.19), skin)
+		rounded_part(waist, "Eye", Vector3(0.035, 0.045, 0.045), Vector3(face_dir * 0.18, 1.23, side * 0.095), Color(0.11, 0.09, 0.08))
+		rounded_part(waist, "Eyebrow", Vector3(0.035, 0.035, 0.10), Vector3(face_dir * 0.185, 1.29, side * 0.095), black)
+	rounded_part(waist, "Beard", Vector3(0.19, 0.13, 0.22), Vector3(face_dir * 0.135, 1.01, 0), black)
 	return root
 
 func add_joint_debug_label(parent: Node3D, label_text: String, marker_color: Color, offset: Vector3) -> void:
