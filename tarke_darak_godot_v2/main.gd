@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v9.3 - adaptive feint-reading AI"
+const BUILD_LABEL := "v9.4 - full arena pursuit movement"
 const DEF_X := 1.55
 const STRIKES_PER_TURN := 2
 const STRIKE_TIME_LIMIT := 20.0
@@ -13,10 +13,10 @@ const ARENA_RIGHT := 3.30
 const OUT_LIMIT := 5.0
 const OUT_PENALTY := 100
 const MIN_X := -5.80
-const MAX_X := 0.35
+const MAX_X := 5.80
 const MIN_FIGHTER_GAP := 1.12
-const DEFENDER_MIN_X := 0.65
-const DEFENDER_MAX_X := 4.80
+const DEFENDER_MIN_X := -5.80
+const DEFENDER_MAX_X := 5.80
 const SWING_SECONDS := 0.82
 const RECOVERY_SECONDS := 0.48
 const MAX_SWEEP_STEP := 0.025
