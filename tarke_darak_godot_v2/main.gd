@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v8.9 - impact reactions, dust and sound"
+const BUILD_LABEL := "v9.0 - Bakhtiari mountain arena"
 const DEF_X := 1.55
 const STRIKES_PER_TURN := 2
 const STRIKE_TIME_LIMIT := 20.0
@@ -238,27 +238,75 @@ func add_leg_debug_marker(parent: Node3D, label_text: String, z_side: float, mar
 	band.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 func add_scenery() -> void:
-	# Decorative landscape only; no collision and no change to strike physics.
-	var rock := material(Color(0.48, 0.39, 0.31))
-	var distant := material(Color(0.61, 0.57, 0.50))
-	for i in range(9):
+	# Low-poly Bakhtiari-inspired arena dressing. All objects are decorative:
+	# no colliders, no changes to the fight lanes, scoring or camera.
+	var mountain_near := material(Color(0.43, 0.35, 0.30))
+	var mountain_far := material(Color(0.66, 0.60, 0.53))
+	var sand := material(Color(0.73, 0.60, 0.43))
+	var tent_dark := material(Color(0.15, 0.13, 0.12))
+	var tent_stripe := material(Color(0.77, 0.69, 0.54))
+	for i in range(15):
 		var peak := MeshInstance3D.new()
-		peak.name = "Zagros mountain %d" % i
-		var mesh := PrismMesh.new()
-		mesh.size = Vector3(3.6 + float(i % 3) * 0.7, 2.0 + float((i * 3) % 5) * 0.34, 1.6)
-		peak.mesh = mesh
-		peak.material_override = distant if i % 2 == 0 else rock
-		peak.position = Vector3(-14.0 + float(i) * 3.5, 0.65, -8.5 - float(i % 3) * 1.5)
+		peak.name = "Zagros ridge %d" % i
+		var mountain := PrismMesh.new()
+		mountain.size = Vector3(4.0 + float(i % 4) * 0.9, 2.7 + float((i * 3) % 6) * 0.42, 2.3)
+		peak.mesh = mountain
+		peak.material_override = mountain_far if i % 3 == 0 else mountain_near
+		peak.position = Vector3(-25.0 + float(i) * 3.6, 0.75, -17.0 - float(i % 3) * 2.1)
 		add_child(peak)
-	for i in range(26):
+	# Distant ochre terrace frames the arena without hiding the chalk lines.
+	block(self, "Spectator terrace rear", Vector3(19.0, 0.36, 2.0), Vector3(0.0, 0.10, -6.0), Color(0.52, 0.38, 0.27))
+	block(self, "Spectator terrace front", Vector3(19.0, 0.28, 1.2), Vector3(0.0, 0.08, 5.5), Color(0.54, 0.40, 0.28))
+	# Black tents, pitched outside the arena at the rear.
+	for t in range(3):
+		var tent_x := -7.5 + float(t) * 7.4
+		var tent_z := -10.2 - float(t % 2) * 1.5
+		var roof := MeshInstance3D.new()
+		roof.name = "Bakhtiari black tent %d" % t
+		var roof_mesh := PrismMesh.new()
+		roof_mesh.size = Vector3(3.9, 2.1, 3.0)
+		roof.mesh = roof_mesh
+		roof.material_override = tent_dark
+		roof.position = Vector3(tent_x, 1.25, tent_z)
+		add_child(roof)
+		for stripe in range(3):
+			block(self, "Tent woven trim", Vector3(0.12, 0.10, 2.65), Vector3(tent_x - 1.25 + stripe * 1.25, 0.72, tent_z), Color(0.72, 0.60, 0.43))
+		for side in [-1.0, 1.0]:
+			var pole := rod(self, "Tent support", 0.045, Color(0.32, 0.23, 0.15))
+			place_rod(pole, Vector3(tent_x + side * 1.65, 0.0, tent_z + 0.85), Vector3(tent_x + side * 1.65, 1.6, tent_z + 0.85))
+	# A readable low-poly crowd, outside the chalk boundary.
+	var clothing := [
+		Color(0.88, 0.82, 0.69), Color(0.26, 0.30, 0.33),
+		Color(0.54, 0.34, 0.24), Color(0.71, 0.58, 0.39)
+	]
+	for i in range(28):
+		var rear := i < 20
+		var row_index := i if rear else i - 20
+		var x := -8.2 + float(row_index) * (0.84 if rear else 2.1)
+		var z := -5.8 - float(i % 3) * 0.36 if rear else 5.35
+		var height := 1.0 + float(i % 4) * 0.07
+		var crowd := Node3D.new()
+		crowd.name = "Spectator %02d" % i
+		crowd.position = Vector3(x, 0.0, z)
+		add_child(crowd)
+		block(crowd, "Woven clothing", Vector3(0.37, 0.67, 0.31), Vector3(0.0, 0.68, 0.0), clothing[i % clothing.size()])
+		block(crowd, "Head", Vector3(0.25, 0.29, 0.25), Vector3(0.0, 1.17, 0.0), Color(0.60, 0.41, 0.28))
+		block(crowd, "Cap", Vector3(0.31, 0.12, 0.30), Vector3(0.0, 1.34, 0.0), Color(0.13, 0.12, 0.11))
+		for leg in [-1.0, 1.0]:
+			block(crowd, "Trouser", Vector3(0.15, 0.40, 0.16), Vector3(leg * 0.10, 0.20, 0.0), Color(0.14, 0.14, 0.13))
+		crowd.scale = Vector3.ONE * height
+	# Small rocks and dry shrubs around, not inside, the active fight lane.
+	for i in range(44):
+		var x := -9.2 + float((i * 17) % 43) * 0.43
+		var z := -7.4 - float(i % 5) * 0.52 if i % 2 == 0 else 5.0 + float(i % 4) * 0.45
 		var stone := MeshInstance3D.new()
-		stone.name = "Ground pebble %d" % i
+		stone.name = "Arena edge pebble %d" % i
 		var pebble := SphereMesh.new()
-		pebble.radius = 0.09 + float(i % 4) * 0.025
-		pebble.height = 0.10
+		pebble.radius = 0.08 + float(i % 4) * 0.04
+		pebble.height = 0.11
 		stone.mesh = pebble
-		stone.material_override = rock
-		stone.position = Vector3(-7.5 + float((i * 17) % 29) * 0.53, 0.015, -2.6 + float((i * 11) % 17) * 0.32)
+		stone.material_override = sand if i % 3 == 0 else mountain_near
+		stone.position = Vector3(x, 0.02, z)
 		add_child(stone)
 
 func _ready() -> void:
