@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v7.5 - responsive timed guard"
+const BUILD_LABEL := "v7.6 - fair scoring and AI defense"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -46,6 +46,10 @@ var fake_timer := 0.0
 var fake_cooldown := 0.0
 var score_hit := 0
 var score_block := 0
+var score_board: Label
+var ai_guard_delay := -1.0
+var ai_guard_side := 0
+var ai_guard_chance := 0.62
 var status: Label
 var header: Label
 var detail: Label
@@ -297,6 +301,17 @@ func _ready() -> void:
 	detail = Label.new()
 	detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(detail)
+	var scoreboard_panel := PanelContainer.new()
+	scoreboard_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	scoreboard_panel.offset_left = -252
+	scoreboard_panel.offset_right = -12
+	scoreboard_panel.offset_top = 124
+	scoreboard_panel.offset_bottom = 211
+	layer.add_child(scoreboard_panel)
+	score_board = Label.new()
+	score_board.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	score_board.add_theme_font_size_override("font_size", 20)
+	scoreboard_panel.add_child(score_board)
 	var footer := Label.new()
 	footer.text = "A/D move | TAB switch | W blue L / S red R guard | J/L attack side | F fake | SPACE attack | R reset"
 	footer.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
@@ -333,6 +348,7 @@ func _input(event: InputEvent) -> void:
 				guard_window = 0.0
 				guard_cooldown = 0.0
 				guard_side = 0
+				ai_guard_delay = -1.0
 				fake_timer = 0.0
 				say("DEFENSE: A/D move defender; W/S steer darak; SPACE starts opponent." if defending else "ATTACK: A/D move; J/L feint; SPACE swing.")
 			KEY_R:
@@ -351,6 +367,7 @@ func _input(event: InputEvent) -> void:
 				guard_window = 0.0
 				guard_cooldown = 0.0
 				guard_side = 0
+				ai_guard_delay = -1.0
 				fake_timer = 0.0
 				fake_cooldown = 0.0
 				feint_depth = 0.0
@@ -394,6 +411,14 @@ func _input(event: InputEvent) -> void:
 						start_swing()
 
 func start_swing() -> void:
+	if not defending:
+		# AI reads the windup with imperfect accuracy and variable reaction.
+		ai_guard_delay = randf_range(0.18, 0.40) if randf() < ai_guard_chance else -1.0
+		ai_guard_side = -strike_side if randf() < 0.82 else strike_side
+		guard_window = 0.0
+		guard_cooldown = 0.0
+		guard_side = 0
+		guard_target = 0.0
 	fake_timer = 0.0
 	swing = 0.0
 	swing_speed = 0.0
@@ -597,7 +622,12 @@ func check_sweep(previous: float, current: float, previous_guard: Array[Vector3]
 		# Only the forward portion can be blocked; a distant or rear section
 		# touching the guard must not count as a successful defense.
 		var forward_start: Vector3 = s[0].lerp(s[1], 0.76) if strike_side > 0 else s[1].lerp(s[0], 0.76)
-		if (not defending or (guard_window > 0.0 and guard_side == -strike_side)) and segment_distance(forward_start, tip, guard_a, guard_b) <= STICK_RADIUS + GUARD_RADIUS + 0.025:
+		var valid_guard := guard_window > 0.0 and guard_side == -strike_side and absf(guard_shift) >= 0.64
+		var rod_contact := segment_distance(forward_start, tip, guard_a, guard_b) <= STICK_RADIUS + GUARD_RADIUS + 0.09
+		# Small collision tolerance for the low-poly rods: correct timed
+		# positioning intercepts the incoming tip near the shin lane.
+		var intercept_zone := tip.x >= defender_x - 0.82 and tip.x <= defender_x + 0.15 and tip.y <= 1.15 and absf(tip.z - guard_a.z) <= 0.53
+		if valid_guard and (rod_contact or intercept_zone):
 			return "block"
 		# Each strike is checked only against its selected near/far leg lane.
 		var target_z := -float(strike_side) * 0.34
@@ -629,6 +659,19 @@ func _physics_process(delta: float) -> void:
 	var previous_guard := guard_ends()
 	fake_timer = maxf(0.0, fake_timer - delta)
 	fake_cooldown = maxf(0.0, fake_cooldown - delta)
+	if ai_guard_delay >= 0.0 and not defending and swing >= 0.0:
+		ai_guard_delay -= delta
+		if ai_guard_delay < 0.0:
+			guard_side = ai_guard_side
+			guard_target = float(guard_side)
+			guard_window = 0.55
+			guard_cooldown = 0.60
+	if not defending:
+		guard_window = maxf(0.0, guard_window - delta)
+		if guard_window <= 0.0:
+			guard_target = 0.0
+		var ai_weight := 1.0 - exp(-24.0 * delta)
+		guard_shift = lerpf(guard_shift, guard_target, ai_weight)
 	var before_attack := attack_x
 	var before_defender := defender_x
 	if swing < 0.0 and recovery < 0.0 and not defending:
@@ -676,7 +719,7 @@ func _physics_process(delta: float) -> void:
 		var result := check_sweep(old, swing, previous_guard, guard_ends())
 		if result == "block":
 			score_block += 100
-			say("BLOCK: terkeh touched the held darak! Defender +100")
+			say("SUCCESSFUL DEFENSE: correct side and timing! Defender +100")
 			impact_hold = 0.22
 			swing_speed = 0.0
 			recovery_from = swing
@@ -708,6 +751,7 @@ func _physics_process(delta: float) -> void:
 		defend_step_phase += absf(defend_velocity) * delta * 8.0
 	last_attack_x = attack_x - attack_velocity / 1.8
 	last_defender_x = defender_x - defend_velocity / 1.8
+	score_board.text = "ATTACKER  %d\nDEFENDER  %d" % [score_hit, score_block]
 	update_visuals()
 	update_camera(delta)
 	header.text = BUILD_LABEL + "  |  " + ("DEFENSE TEST" if defending else "ATTACK TEST") + "  |  Hit: %d  Block: %d" % [score_hit, score_block]
