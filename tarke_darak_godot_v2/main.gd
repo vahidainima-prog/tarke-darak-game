@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v7.4 - lower-end lateral darak defense"
+const BUILD_LABEL := "v7.5 - responsive timed guard"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -377,8 +377,8 @@ func _input(event: InputEvent) -> void:
 				if defending and guard_cooldown <= 0.0:
 					guard_side = 1 if event.keycode == KEY_W else -1
 					guard_target = float(guard_side)
-					guard_window = 0.42
-					guard_cooldown = 0.60
+					guard_window = 0.58
+					guard_cooldown = 0.48
 					say("Darak: LEFT / blue L" if guard_side > 0 else "Darak: RIGHT / red R")
 			KEY_SPACE:
 				if swing < 0.0 and recovery < 0.0 and opponent_delay < 0.0 and fake_timer <= 0.0:
@@ -471,8 +471,8 @@ func guard_ends() -> Array[Vector3]:
 	var side := guard_shift
 	# Hands stay near the upper grip; the LOWER tip sweeps outward
 	# across the targeted shin, directly into the incoming strike lane.
-	var bottom := Vector3(defender_x - 0.35, 0.12, side * 0.88)
-	var top := Vector3(defender_x - 0.50, 1.67, side * 0.10)
+	var bottom := Vector3(defender_x - 0.35, 0.12, side * 0.67)
+	var top := Vector3(defender_x - 0.50, 1.67, side * 0.06)
 	var endpoints: Array[Vector3] = [bottom, top]
 	return endpoints
 
@@ -647,7 +647,7 @@ func _physics_process(delta: float) -> void:
 		if guard_window <= 0.0:
 			guard_target = 0.0
 		# Critically damped hand-guided guard: the staff follows, never detaches.
-		var omega := 9.0
+		var omega := 32.0 if guard_window > 0.0 else 14.0
 		# Exact critically damped spring step for constant target; stable across frame rates.
 		var error := guard_shift - guard_target
 		var decay := exp(-omega * delta)
