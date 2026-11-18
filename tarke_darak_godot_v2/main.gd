@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v6.5 - stable shoulder and outward elbow"
+const BUILD_LABEL := "v6.6 - outside-in semicircle strike"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -384,8 +384,8 @@ func strike_ends(p: float) -> Array[Vector3]:
 	var ready_tip: Vector3 = ready_b if strike_side > 0 else ready_a
 	# First move the TIP into the outside lane while still near attacker.
 	# This avoids cutting through the middle of the defender on the way down.
-	var waypoint_butt := Vector3(attack_x + 0.24, 1.85, side * 1.18)
-	var waypoint_direction := Vector3(1.42, -0.38, -side * 0.48).normalized()
+	var waypoint_butt := Vector3(attack_x + 0.24, 1.85, side * 1.30)
+	var waypoint_direction := Vector3(1.42, -0.38, -side * 0.12).normalized()
 	var waypoint_tip := waypoint_butt + waypoint_direction * STICK_LENGTH
 	# Final: rear hand remains on the attacker's side; tip approaches
 	# the OUTSIDE of the labeled leg rather than crossing the belly.
@@ -400,8 +400,13 @@ func strike_ends(p: float) -> Array[Vector3]:
 		tip = ready_tip.lerp(waypoint_tip, windup)
 	else:
 		var follow_through := smoothstep(0.38, 0.90, t)
-		butt = waypoint_butt.lerp(final_butt, follow_through)
-		tip = waypoint_tip.lerp(final_tip, follow_through)
+		# Quadratic Bezier arc: sweep around the OUTSIDE first, then inward
+		# toward the outer face of the selected leg (never across the torso).
+		var u := follow_through
+		var outer_butt := Vector3(attack_x + 0.40, 1.43, side * 1.52)
+		var outer_tip := Vector3(attack_x + 2.02, 1.23, side * 1.75)
+		butt = waypoint_butt * ((1.0 - u) * (1.0 - u)) + outer_butt * (2.0 * (1.0 - u) * u) + final_butt * (u * u)
+		tip = waypoint_tip * ((1.0 - u) * (1.0 - u)) + outer_tip * (2.0 * (1.0 - u) * u) + final_tip * (u * u)
 	# Rebuild a constant-length staff from the driving-hand end.
 	var axis := (tip - butt).normalized()
 	tip = butt + axis * STICK_LENGTH
