@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v6.4 - extending striking arm"
+const BUILD_LABEL := "v6.5 - stable shoulder and outward elbow"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -432,7 +432,7 @@ func animate_footwork(character: Node3D, phase: float, motion: float, swing_pose
 	var stride := minf(1.0, absf(motion) / 1.8)
 	var accent := sin(swing_pose * PI) if swing_pose > 0.0 else 0.0
 	var bend := smoothstep(0.02, 0.62, swing_pose) if facing > 0.0 else 0.0
-	var lean := 0.36 * bend
+	var lean := 0.12 * bend
 	for child in character.get_children():
 		if not child is Node3D:
 			continue
@@ -448,9 +448,9 @@ func animate_footwork(character: Node3D, phase: float, motion: float, swing_pose
 			n.position.y = (0.12 if n.name.begins_with("Giveh") else 0.70) + 0.08 * stride * maxf(0.0, step)
 		elif n.name == "WaistJoint":
 			# One anatomical hinge carries clothing, head and shoulders together.
-			n.rotation.z = -facing * (0.05 * stride * sin(phase) + 0.88 * bend)
+			n.rotation.z = -facing * (0.05 * stride * sin(phase) + 0.30 * bend)
 			n.rotation.y = float(strike_side) * 0.28 * bend if facing > 0.0 else 0.0
-			n.position = Vector3(facing * 0.15 * bend, 1.14 - 0.18 * bend, 0.0)
+			n.position = Vector3(facing * 0.08 * bend, 1.14 - 0.05 * bend, 0.0)
 
 func update_visuals() -> void:
 	attacker.position.x = attack_x
@@ -463,7 +463,7 @@ func update_visuals() -> void:
 	animate_footwork(attacker, attack_step_phase, attack_x - last_attack_x, pose, 1.0)
 	animate_footwork(defender, defend_step_phase, defender_x - last_defender_x, 0.0, -1.0)
 	var bend_amount := smoothstep(0.02, 0.62, pose)
-	var shoulder_shift := Vector3(0.24 * bend_amount, -0.16 * bend_amount, 0.0)
+	var shoulder_shift := Vector3(0.10 * bend_amount, -0.12 * bend_amount, 0.0)
 	var ends := strike_ends(pose)
 	var a := ends[0]
 	var b := ends[1]
@@ -493,9 +493,9 @@ func update_visuals() -> void:
 	attack_hand_a.position = left_grip.lerp(left_rest, release_blend if strike_side < 0 else 0.0)
 	attack_hand_b.position = right_grip.lerp(right_rest, release_blend if strike_side > 0 else 0.0)
 	var strike_extension := smoothstep(0.30, 0.82, pose) * 0.94
-	var left_elbow_hint: Vector3 = Vector3(1.15, -0.18, -0.48) if strike_side > 0 else Vector3(0.78, -0.32, -0.75)
+	var left_elbow_hint: Vector3 = Vector3(0.65, -0.12, -1.30) if strike_side > 0 else Vector3(0.50, -0.25, -0.85)
 	place_two_bone_arm(attack_arm_a, attack_forearm_a, attack_elbow_a, Vector3(attack_x + 0.20, 1.92, -0.14) + shoulder_shift, attack_hand_a.position, left_elbow_hint, strike_extension if strike_side > 0 else 0.0)
-	var right_elbow_hint: Vector3 = Vector3(1.15, -0.18, 0.48) if strike_side < 0 else Vector3(0.78, -0.32, 0.75)
+	var right_elbow_hint: Vector3 = Vector3(0.65, -0.12, 1.30) if strike_side < 0 else Vector3(0.50, -0.25, 0.85)
 	place_two_bone_arm(attack_arm_b, attack_forearm_b, attack_elbow_b, Vector3(attack_x + 0.20, 1.92, 0.16) + shoulder_shift, attack_hand_b.position, right_elbow_hint, strike_extension if strike_side < 0 else 0.0)
 	var g := guard_ends()
 	place_rod(darak, g[0], g[1])
