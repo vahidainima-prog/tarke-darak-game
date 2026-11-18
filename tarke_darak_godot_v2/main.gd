@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v5.6 - two visible leg lanes"
+const BUILD_LABEL := "v5.7 - labeled defender left and right legs"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -155,6 +155,23 @@ func person(name: String, x: float, face_right: bool) -> Node3D:
  block(waist, "Nose-facing", Vector3(0.12, 0.11, 0.15), Vector3(0.22 if face_right else -0.22, 1.13, 0.06), skin)
  return root
 
+func add_leg_debug_marker(parent: Node3D, label_text: String, z_side: float, marker_color: Color) -> void:
+ # Defender faces -X: anatomical RIGHT is -Z, LEFT is +Z.
+ # Parent the marker to the fighter so it follows defender movement.
+ var marker := Label3D.new()
+ marker.name = "DEBUG leg " + label_text
+ marker.text = label_text
+ marker.font_size = 80
+ marker.pixel_size = 0.005
+ marker.modulate = marker_color
+ marker.outline_size = 12
+ marker.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+ marker.no_depth_test = true
+ marker.position = Vector3(-0.30, 0.68, z_side * 0.34)
+ parent.add_child(marker)
+ var band := block(parent, "DEBUG leg band " + label_text, Vector3(0.38, 0.09, 0.39), Vector3(0.0, 0.45, z_side * 0.34), marker_color)
+ band.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
 func add_scenery() -> void:
  # Decorative landscape only; no collision and no change to strike physics.
  var rock := material(Color(0.48, 0.39, 0.31))
@@ -197,6 +214,8 @@ func _ready() -> void:
  add_scenery()
  attacker = person("Attacker facing RIGHT", attack_x, true)
  defender = person("Defender facing LEFT", defender_x, false)
+ add_leg_debug_marker(defender, "L", 1.0, Color(0.15, 0.48, 1.0))
+ add_leg_debug_marker(defender, "R", -1.0, Color(1.0, 0.18, 0.16))
  terkeh = rod(self, "Terkeh attached to raised hands", STICK_RADIUS, Color(0.88, 0.69, 0.34))
  darak = rod(self, "Darak held in defender hand", GUARD_RADIUS, Color(0.36, 0.22, 0.12))
  attack_hand_a = block(self, "Attacker left hand", Vector3(0.19, 0.17, 0.17), Vector3.ZERO, Color(0.67, 0.44, 0.29))
@@ -329,7 +348,7 @@ func strike_ends(p: float) -> Array[Vector3]:
  var ready_a := ready_center + Vector3(0.0, 0.0, -STICK_LENGTH * 0.5)
  var ready_b := ready_center + Vector3(0.0, 0.0, STICK_LENGTH * 0.5)
  # Opposite side lanes: J goes to negative Z, L to positive Z.
- var target_side := -float(strike_side)
+ var target_side := float(strike_side)
  var tip_x := minf(defender_x - 0.12, attack_x + 2.08)
  var tip := Vector3(tip_x, 0.44, target_side * 0.34)
  # The rear hand stays near the attacker while the far TIP selects the leg.
@@ -453,7 +472,7 @@ func check_sweep(previous: float, current: float, previous_guard: Array[Vector3]
   if segment_distance(s[0], s[1], guard_a, guard_b) <= STICK_RADIUS + GUARD_RADIUS + 0.025:
    return "block"
   # Each strike is checked only against its selected near/far leg lane.
-  var target_z := -float(strike_side) * 0.34
+  var target_z := float(strike_side) * 0.34
   var leg_a := Vector3(defender_x, 0.12, target_z)
   var leg_b := Vector3(defender_x, 0.77, target_z)
   if segment_distance(s[0], s[1], leg_a, leg_b) <= 0.20:
@@ -562,4 +581,4 @@ func _physics_process(delta: float) -> void:
  update_visuals()
  update_camera(delta)
  header.text = BUILD_LABEL + "  |  " + ("DEFENSE TEST" if defending else "ATTACK TEST") + "  |  Hit: %d  Block: %d" % [score_hit, score_block]
- detail.text = "Target: %s side  |  Distance: %.2f m  |  Guard side: %.2f m  |  W/S: defend" % [("LEFT / J" if strike_side > 0 else "RIGHT / L"), defender_x - attack_x, guard_shift]
+ detail.text = "Target: %s leg  |  Distance: %.2f m  |  Guard side: %.2f m  |  Blue L / Red R" % [("LEFT / J" if strike_side > 0 else "RIGHT / L"), defender_x - attack_x, guard_shift]
