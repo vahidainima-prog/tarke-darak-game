@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v7.3 - angled guard and fake strike"
+const BUILD_LABEL := "v7.4 - lower-end lateral darak defense"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -466,11 +466,13 @@ func strike_tip(p: float) -> Vector3:
 	return ends[1] if strike_side > 0 else ends[0]
 
 func guard_ends() -> Array[Vector3]:
-	# The lower end stays near the shins while the upper end leans
-	# dramatically into the chosen incoming lane. Both hands track it.
+	# The upper grip stays near the body; the lower end sweeps into
+	# the incoming strike lane. Visuals and collision use the same endpoints.
 	var side := guard_shift
-	var bottom := Vector3(defender_x - 0.35, 0.12, side * 0.10)
-	var top := Vector3(defender_x - 0.50, 1.67, side * 1.15)
+	# Hands stay near the upper grip; the LOWER tip sweeps outward
+	# across the targeted shin, directly into the incoming strike lane.
+	var bottom := Vector3(defender_x - 0.35, 0.12, side * 0.88)
+	var top := Vector3(defender_x - 0.50, 1.67, side * 0.10)
 	var endpoints: Array[Vector3] = [bottom, top]
 	return endpoints
 
