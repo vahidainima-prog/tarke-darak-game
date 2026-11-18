@@ -2,7 +2,7 @@ extends Node3D
 
 # Godot 4.x — visual mechanics test. Side camera looks along -Z.
 # Feint depth: negative Z is BEHIND the attacker; positive Z is IN FRONT.
-const BUILD_LABEL := "v4.3 - distinct left right"
+const BUILD_LABEL := "v4.4 - clear one-hand swing"
 const DEF_X := 1.55
 const MIN_X := -4.7
 const MAX_X := 0.35
@@ -364,14 +364,16 @@ func update_visuals() -> void:
  var phase := swing if swing >= 0.0 else (recovery_from if recovery >= 0.0 else 0.0)
  var release_target := 0.0
  if releasing:
-  release_target = smoothstep(0.05, 0.34, phase)
+  release_target = smoothstep(0.0, 0.16, phase)
  if recovery >= 0.0:
-  release_target *= 1.0 - smoothstep(0.20, 0.95, recovery)
+  release_target *= 1.0 - smoothstep(0.45, 0.95, recovery)
  release_blend = release_target
- var left_grip := a + direction * (0.14 if strike_side < 0 else 0.52)
- var right_grip := a + direction * (0.52 if strike_side < 0 else 1.93)
- var left_rest := Vector3(attack_x - 0.30, 1.86, 0.25)
- var right_rest := Vector3(attack_x + 0.33, 1.88, 0.25)
+ # Both hands hold opposite ends at rest. During the swing only the
+ # driving hand stays at its near-end grip; the other drops beside the torso.
+ var left_grip := a + direction * 0.20
+ var right_grip := b - direction * 0.20
+ var left_rest := Vector3(attack_x - 0.24, 1.38, -0.42)
+ var right_rest := Vector3(attack_x + 0.20, 1.36, 0.55)
  attack_hand_a.position = left_grip.lerp(left_rest, release_blend if strike_side < 0 else 0.0)
  attack_hand_b.position = right_grip.lerp(right_rest, release_blend if strike_side > 0 else 0.0)
  place_two_bone_arm(attack_arm_a, attack_forearm_a, attack_elbow_a, Vector3(attack_x + 0.20, 1.92, -0.14) + shoulder_shift, attack_hand_a.position, Vector3(-0.6, 0.1, -0.7))
